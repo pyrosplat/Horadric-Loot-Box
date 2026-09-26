@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #0b0a09;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a342e;
+  border-radius: 6px;
+  border: 2px solid #121110;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+select option,
+select optgroup {
+  background: #121110;
+}

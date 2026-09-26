@@ -1,0 +1,42 @@
+# dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.tsbuildinfo
+coverage/
+
+# local scratch and logs
+scratch/
+*.log
+npm-debug.log*
+
+# packaged source zips / release artifacts built by hand
+*.zip
+
+# environment and secrets (signing keys, tokens)
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+
+# editors and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# never commit real save files by accident (test/demo saves are listed explicitly below)
+*.d2s
+*.d2i
+*.hlb.json
+*.hvault.json
+!tests/fixtures/*.d2s
+!tests/fixtures/*.d2i
+!public/demo/*.d2s
+!public/demo/*.d2i

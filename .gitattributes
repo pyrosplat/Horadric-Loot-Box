@@ -1,0 +1,9 @@
+# Normalise text line endings; keep save files and images byte-exact (Windows checkouts would corrupt them otherwise)
+* text=auto
+*.d2s binary
+*.d2i binary
+*.png binary
+*.ico binary
+*.icns binary
+# the game tables are tab-separated; keep them as they are
+vendor/**/*.txt -text

@@ -1,0 +1,29 @@
+[package]
+name = "horadric-loot-box"
+version = "0.8.11"
+description = "Muling tool for Diablo II: Resurrected — Reign of the Warlock"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "horadric_loot_box_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+cc = "1"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+dirs = "6"
+png = "0.17"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
