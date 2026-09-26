@@ -258,6 +258,11 @@ function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: (
               <span className="text-gold-300">Horadric Loot Box</span> {__APP_VERSION__} · created by <span className="font-semibold">PyroSplat</span>
             </p>
             <Hint>Game data from {GD.meta.source.replace(/ \(.*\)$/, '')}. Not affiliated with Blizzard.</Hint>
+            {store.platform.id === 'tauri' && store.folder && (
+              <Hint>
+                Vaults are saved in <span className="font-mono text-ink-400 [overflow-wrap:anywhere]">{store.folder.replace(/[\\/]+$/, '')}{store.folder.includes('\\') ? '\\' : '/'}HoradricLootBox-Vaults</span>, next to your characters.
+              </Hint>
+            )}
             <Hint>
               Items only move between saves of the same edition, and hardcore never mixes with softcore. {store.lastBackup ? `Last backup: ${store.lastBackup}.` : 'Each file is backed up the first time you save it.'}
             </Hint>
@@ -316,7 +321,7 @@ function ArtSettings() {
       {backend ? (
         <>
           <Hint>
-            Needs unpacked game files. Extract the game's <span className="font-mono">data</span> folder with CascView or D2RMM, then type or paste where it is (any drive), or browse to it.
+            Needs unpacked game files. Extract the game's <span className="font-mono">data</span> folder with CascView, then type or paste where it is (any drive), or browse to it.
             Nothing is copied or shared.
           </Hint>
           <p className={`mt-2 text-[12px] [overflow-wrap:anywhere] ${tone}`}>{st.state === 'loading' ? 'Loading…' : st.message}</p>

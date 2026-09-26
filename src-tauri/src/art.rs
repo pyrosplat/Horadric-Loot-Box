@@ -1,7 +1,7 @@
 //! Item artwork, read at runtime from the player's own Diablo II: Resurrected install.
 //!
 //! Nothing of Blizzard's is shipped with the app. The game's CASC storage is opened read-only through the
-//! vendored CascLib (the same library D2RMM uses), or an already-extracted data folder is read directly.
+//! vendored CascLib, or an already-extracted data folder is read directly.
 //! Inventory sprites (`data/hd/global/ui/items/**.sprite`, format "SpA1") are decoded to PNG on demand and
 //! served to the web view through the `hlbart:` URI scheme.
 
@@ -47,7 +47,7 @@ impl Drop for Casc {
 
 impl Casc {
     fn open(dir: &Path) -> Result<Casc, String> {
-        // Same attempts as D2RMM: with D2R's product code, with an empty one, then the bare folder.
+        // Tried in order: with D2R's product code, with an empty one, then the bare folder.
         let base = dir
             .to_string_lossy()
             .trim_end_matches(['/', '\\'])
@@ -109,7 +109,7 @@ impl Casc {
 
 enum Source {
     Casc(Casc),
-    /// A folder whose `hd/` subfolder mirrors the game's `data/hd/` (e.g. a CascView or D2RMM extraction).
+    /// A folder whose `hd/` subfolder mirrors the game's `data/hd/` (e.g. a CascView extraction).
     Folder(PathBuf),
 }
 

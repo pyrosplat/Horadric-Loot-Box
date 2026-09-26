@@ -1,6 +1,6 @@
 {
   "name": "horadric-loot-box",
-  "version": "0.8.13",
+  "version": "1.0.0",
   "description": "Muling tool for Diablo II: Resurrected — Reign of the Warlock (save v105)",
   "scripts": {
     "gamedata": "node scripts/build-gamedata.mjs",

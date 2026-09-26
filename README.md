@@ -23,10 +23,11 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 3. Drag a character, stash or vault from the sidebar onto the left or right side.
 4. Move items, then click **Save**.
 
-**Game art (optional):** extract the game's `data` folder with [CascView](http://www.zezula.net/en/casc/main.html) or [D2RMM](https://github.com/olegbl/d2rmm). Then set its location in **Settings → Items → Game art**. Without it, items show as tiles.
+**Game art (optional):** extract the game's `data` folder with [CascView](http://www.zezula.net/en/casc/main.html). Then set its location in **Settings → Items → Game art**. Without it, items show as tiles.
 
 **Saves:** `%USERPROFILE%\Saved Games\Diablo II Resurrected` on Windows, or the same path inside your Proton/Wine prefix on Linux.<br>
-**Vaults and backups:** `%APPDATA%\com.horadriclootbox.app\` on Windows, or `~/.local/share/com.horadriclootbox.app/` on Linux.
+**Vaults** are kept in a `HoradricLootBox-Vaults` folder inside your save folder, so backing up your saves backs up your vaults too. Vaults from older versions are copied there on first launch.<br>
+**Backups** made before each save go in `%APPDATA%\com.horadriclootbox.app\backups` on Windows, or `~/.local/share/com.horadriclootbox.app/backups` on Linux.
 
 ## Shortcuts
 
@@ -59,7 +60,7 @@ For a new game patch, replace the tables in `vendor/d2r-3.3/`, then run `npm run
 
 ## Credits
 
-- [CascLib](https://github.com/ladislav-zezula/CascLib) (MIT) and [D2RMM](https://github.com/olegbl/d2rmm) sprite notes (MIT).
+- [CascLib](https://github.com/ladislav-zezula/CascLib) (MIT).
 - Save-format research: [D2SSharp](https://github.com/ResurrectedTrader/D2SSharp), [halbu](https://github.com/feored/halbu), [d2s](https://github.com/dschu012/d2s), [d07riv](https://github.com/d07RiV/d07riv.github.io) and [GoMule](https://gomule.sourceforge.io/). Test saves come from D2SSharp and halbu.
 - Game tables (© Blizzard) via [D2R-Excel](https://github.com/pinkufairy/D2R-Excel) and [d2data](https://github.com/blizzhackers/d2data). They aren't covered by this project's license; see [NOTICE](vendor/d2r-3.3/NOTICE.md).
 

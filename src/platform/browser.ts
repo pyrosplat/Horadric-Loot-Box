@@ -101,8 +101,8 @@ export const browserPlatform: Platform = {
   async readText(path) {
     return new TextDecoder().decode(await this.readFile(path));
   },
-  async writeVault(name, text, existingPath) {
-    await this.listVaults();
+  async writeVault(_folder, name, text, existingPath) {
+    await this.listVaults('');
     if (!vaultDir) throw new Error('Open a save folder first; vaults are stored next to it.');
     const file = existingPath ? existingPath.split('/').pop()! : `${name.replace(/[^\w\- ]+/g, '_')}.hlb.json`;
     await writeIn(vaultDir, file, text);
@@ -112,7 +112,7 @@ export const browserPlatform: Platform = {
     return false;
   },
   async deleteVault(path) {
-    await this.listVaults();
+    await this.listVaults('');
     if (!vaultDir) throw new Error('Vault folder not available');
     const name = path.split('/').pop()!;
     const kept = await this.backupFiles([path]);

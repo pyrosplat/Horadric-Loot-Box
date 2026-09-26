@@ -25,10 +25,10 @@ export interface Platform {
   writeFileAtomic(path: string, data: Uint8Array): Promise<void>;
   /** Copies the given files into a timestamped backup folder; returns the folder path. */
   backupFiles(paths: string[]): Promise<string>;
-  /** Vault storage (Horadric Loot Box's own unlimited stash files). */
-  listVaults(): Promise<SaveFileEntry[]>;
+  /** Vault storage (Horadric Loot Box's own unlimited stash files), kept in a folder inside the save folder. */
+  listVaults(folder: string): Promise<SaveFileEntry[]>;
   readText(path: string): Promise<string>;
-  writeVault(name: string, text: string, existingPath?: string): Promise<string>;
+  writeVault(folder: string, name: string, text: string, existingPath?: string): Promise<string>;
   /** True if Diablo II: Resurrected appears to be running (saves must not be edited while it is). */
   isGameRunning(): Promise<boolean>;
   revealBackups?(): Promise<void>;

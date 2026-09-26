@@ -291,7 +291,7 @@ export class Store {
       this.docs.clear();
       this.history = [];
       for (const f of this.files) await this.loadFile(f);
-      for (const v of await this.platform.listVaults().catch(() => [])) await this.loadVault(v);
+      for (const v of await this.platform.listVaults(folder).catch(() => [])) await this.loadVault(v);
       if (![...this.docs.values()].some((d) => d.doc?.kind === 'vault')) this.addVault('MainVault', false, false);
       const docs = [...this.docs.values()].filter((d) => d.doc);
       const stash = docs.find((d) => d.doc?.kind === 'stash' && (d.doc as D2SharedStash).modern && !(d.doc as D2SharedStash).hardcore) ?? docs.find((d) => d.doc?.kind === 'stash');
@@ -1025,7 +1025,7 @@ export class Store {
         if (o.bytes) await this.platform.writeFileAtomic(o.doc.path, o.bytes);
         else {
           const v = o.doc.doc as Vault;
-          const path = await this.platform.writeVault(v.name, o.text!, o.doc.path || undefined);
+          const path = await this.platform.writeVault(this.folder ?? '', v.name, o.text!, o.doc.path || undefined);
           if (o.doc.path !== path) {
             this.docs.delete(o.doc.id);
             o.doc.id = path;

@@ -92,7 +92,7 @@ export function createDemoPlatform(): Platform {
       if (t === undefined) throw new Error('No such vault');
       return t;
     },
-    async writeVault(name, text, existingPath) {
+    async writeVault(_folder, name, text, existingPath) {
       const path = existingPath ?? `vaults/${name}.hlb.json`;
       vaults.set(path, text);
       return path;

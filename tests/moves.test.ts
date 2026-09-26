@@ -25,7 +25,7 @@ function fakePlatform(): Platform {
     backupFiles: async () => 'none',
     listVaults: async () => [],
     readText: async (p) => vaults.get(p)!,
-    writeVault: async (n, t, e) => {
+    writeVault: async (_f, n, t, e) => {
       const p = e ?? `v/${n}`;
       vaults.set(p, t);
       return p;

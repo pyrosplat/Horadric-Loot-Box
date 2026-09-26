@@ -236,9 +236,54 @@ fn backup_files(app: AppHandle, paths: Vec<String>) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
+/// Vaults live in a folder next to the character saves, so backing up the save folder backs them up too.
+const VAULT_DIR: &str = "HoradricLootBox-Vaults";
+const MOVED_NOTE: &str = "MOVED-TO-SAVE-FOLDER.txt";
+
+/// The vault folder inside a save folder. The first time, vaults kept in the app data folder by older
+/// versions are copied in (the originals stay, with a note saying where they went).
+fn vault_dir(app: &AppHandle, save_folder: &str) -> Result<PathBuf, String> {
+    let save = PathBuf::from(save_folder);
+    if !save.is_dir() {
+        return Err(format!("Save folder {} not found", save.display()));
+    }
+    let dir = save.join(VAULT_DIR);
+    fs::create_dir_all(&dir).map_err(err)?;
+    if let Ok(old) = app.path().app_data_dir().map(|d| d.join("vaults")) {
+        migrate_vaults(&old, &dir);
+    }
+    Ok(dir)
+}
+
+fn migrate_vaults(old: &Path, new: &Path) {
+    if !old.is_dir() || old.join(MOVED_NOTE).exists() {
+        return;
+    }
+    let files: Vec<PathBuf> = children(old).into_iter().filter(|p| is_vault(p)).collect();
+    if files.is_empty() {
+        return;
+    }
+    let mut ok = true;
+    for f in &files {
+        let dst = new.join(f.file_name().unwrap());
+        if !dst.exists() && fs::copy(f, &dst).is_err() {
+            ok = false;
+        }
+    }
+    if ok {
+        let _ = fs::write(
+            old.join(MOVED_NOTE),
+            format!(
+                "Horadric Loot Box 1.0 keeps vaults next to your saves, in:\n{}\n\nThe files here were copied there and are no longer used. You can delete this folder.\n",
+                new.display()
+            ),
+        );
+    }
+}
+
 #[tauri::command]
-fn list_vaults(app: AppHandle) -> Result<Vec<SaveFileEntry>, String> {
-    let dir = data_dir(&app, "vaults")?;
+fn list_vaults(app: AppHandle, folder: String) -> Result<Vec<SaveFileEntry>, String> {
+    let dir = vault_dir(&app, &folder)?;
     Ok(children(&dir)
         .iter()
         .filter(|p| is_vault(p))
@@ -258,6 +303,7 @@ fn read_text(path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_vault(
     app: AppHandle,
+    folder: String,
     name: String,
     text: String,
     existing_path: Option<String>,
@@ -275,7 +321,7 @@ fn write_vault(
                     }
                 })
                 .collect();
-            let dir = data_dir(&app, "vaults")?;
+            let dir = vault_dir(&app, &folder)?;
             let mut p = dir.join(format!("{}.hlb.json", safe.trim()));
             let mut n = 2;
             while p.exists() {
@@ -384,10 +430,9 @@ fn delete_vault(app: AppHandle, path: String) -> Result<String, String> {
     if !is_vault(&p) {
         return Err("Only vault files can be deleted here".into());
     }
-    let vaults = data_dir(&app, "vaults")?;
-    let parent = p.parent().map(|d| d.to_path_buf()).unwrap_or_default();
-    if fs::canonicalize(&parent).ok() != fs::canonicalize(&vaults).ok() {
-        return Err("That vault isn't in the app's vaults folder".into());
+    let in_vault_dir = p.parent().and_then(|d| d.file_name()).map(|n| n == VAULT_DIR).unwrap_or(false);
+    if !in_vault_dir {
+        return Err("That vault isn't in a Horadric Loot Box vaults folder".into());
     }
     let stamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let dir = data_dir(&app, "backups")?.join(format!("{}_deleted_vault", stamp));
@@ -480,6 +525,36 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn old_vaults_are_copied_into_the_save_folder_once() {
+        let d = temp_dir("migrate");
+        let (old, new) = (d.join("appdata/vaults"), d.join("saves").join(VAULT_DIR));
+        fs::create_dir_all(&old).unwrap();
+        fs::create_dir_all(&new).unwrap();
+        fs::write(old.join("MainVault.hlb.json"), "{}").unwrap();
+        fs::write(old.join("Old.hvault.json"), "{}").unwrap();
+        fs::write(old.join("notes.txt"), "x").unwrap();
+        migrate_vaults(&old, &new);
+        assert!(new.join("MainVault.hlb.json").is_file());
+        assert!(new.join("Old.hvault.json").is_file());
+        assert!(!new.join("notes.txt").exists());
+        assert!(old.join(MOVED_NOTE).is_file());
+        assert!(old.join("MainVault.hlb.json").is_file(), "originals are kept");
+        // a vault deleted in the new folder is not copied back on the next start
+        fs::remove_file(new.join("MainVault.hlb.json")).unwrap();
+        migrate_vaults(&old, &new);
+        assert!(!new.join("MainVault.hlb.json").exists());
+        // an existing vault with the same name is never overwritten
+        let d2 = temp_dir("migrate2");
+        let (o2, n2) = (d2.join("old"), d2.join(VAULT_DIR));
+        fs::create_dir_all(&o2).unwrap();
+        fs::create_dir_all(&n2).unwrap();
+        fs::write(o2.join("A.hlb.json"), "old").unwrap();
+        fs::write(n2.join("A.hlb.json"), "new").unwrap();
+        migrate_vaults(&o2, &n2);
+        assert_eq!(fs::read_to_string(n2.join("A.hlb.json")).unwrap(), "new");
     }
 
     #[test]
