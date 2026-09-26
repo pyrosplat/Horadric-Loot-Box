@@ -1,7 +1,11 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { ArtInfo } from '../art';
 import { open } from '@tauri-apps/plugin-dialog';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import type { Platform, SaveFileEntry } from './types';
+
+let pending: Update | null = null;
 
 export const tauriPlatform: Platform = {
   id: 'tauri',
@@ -33,6 +37,22 @@ export const tauriPlatform: Platform = {
     close: () => invoke('art_close'),
     probe: (keys) => invoke<string[]>('art_probe', { keys }),
     url: (key) => convertFileSrc(key, 'hlbart'),
+  },
+  updates: {
+    async check() {
+      pending = await check();
+      return pending ? { version: pending.version, notes: pending.body, date: pending.date } : null;
+    },
+    async install(onProgress) {
+      if (!pending) throw new Error('No update to install. Check for updates first.');
+      let done = 0;
+      let total: number | undefined;
+      await pending.downloadAndInstall((e) => {
+        if (e.event === 'Started') total = e.data.contentLength;
+        else if (e.event === 'Progress') onProgress((done += e.data.chunkLength), total);
+      });
+      await relaunch();
+    },
   },
 };
 

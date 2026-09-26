@@ -38,4 +38,19 @@ export interface Platform {
   deleteVault?(path: string): Promise<string>;
   /** Reads item artwork from the player's own game install (desktop app only). */
   art?: ArtBackend;
+  /** Self-updating from GitHub releases (desktop app only). */
+  updates?: UpdateBackend;
+}
+
+export interface UpdateInfo {
+  version: string;
+  notes?: string;
+  date?: string;
+}
+
+export interface UpdateBackend {
+  /** The newest release, if it is newer than this version. */
+  check(): Promise<UpdateInfo | null>;
+  /** Downloads and installs the update found by `check`, then restarts the app. */
+  install(onProgress: (done: number, total?: number) => void): Promise<void>;
 }

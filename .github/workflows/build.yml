@@ -45,11 +45,18 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update files so installed copies can trust them (see RELEASING.md).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # On a version tag this creates a draft GitHub release with the installers attached.
+          # On a version tag this creates a draft GitHub release with the installers, the signed update
+          # files and latest.json (what the in-app updater reads) attached.
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: Horadric Loot Box ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md for what's new.
           releaseDraft: true
+          includeUpdaterJson: true
+          args: ${{ startsWith(github.ref, 'refs/tags/') && '--config src-tauri/tauri.release.conf.json' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: horadric-loot-box-${{ matrix.platform }}

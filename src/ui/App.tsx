@@ -100,7 +100,14 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
   const [search, setSearch] = useState(false);
   const [settings, setSettings] = useState(false);
   const [confirmReload, setConfirmReload] = useState(false);
+  const [showUpdate, setShowUpdate] = useState(false);
   const dirty = store.dirtyDocs.length;
+
+  useEffect(() => {
+    if (!store.settings.autoUpdate) return;
+    const t = setTimeout(() => store.checkForUpdates(), 3000);
+    return () => clearTimeout(t);
+  }, [store]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -142,6 +149,15 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
           </button>
         )}
         <div className="ml-auto flex items-center gap-1.5">
+          {(store.update.state === 'available' || store.update.state === 'installing') && (
+            <button
+              onClick={() => setShowUpdate(true)}
+              className="mr-1 rounded-full border border-emerald-600/70 bg-emerald-900/30 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-900/50"
+              title="A new version is available"
+            >
+              {store.update.state === 'installing' ? 'Updating…' : `Update to ${store.update.info?.version}`}
+            </button>
+          )}
           <HeaderBtn onClick={() => setSearch(true)} title="Search everything (Ctrl+F)">
             Search
           </HeaderBtn>
@@ -194,6 +210,7 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
       {store.pendingDelete && <ConfirmItemDelete />}
       {search && <SearchPanel onClose={() => setSearch(false)} />}
       {settings && <SettingsModal onClose={() => setSettings(false)} onSwitch={onSwitch} />}
+      {showUpdate && store.update.info && <UpdateDialog onClose={() => setShowUpdate(false)} />}
     </div>
   );
 }
@@ -253,6 +270,7 @@ function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: (
             <ScaleSetting />
           </Section>
           <ArtSettings />
+          {store.platform.updates && <UpdateSettings />}
           <Section title="About">
             <p className="text-[13px] text-ink-200">
               <span className="text-gold-300">Horadric Loot Box</span> {__APP_VERSION__} · created by <span className="font-semibold">PyroSplat</span>
@@ -365,6 +383,77 @@ function ArtSettings() {
         <Hint>Game art needs the desktop app. Classic tiles are used here.</Hint>
       )}
     </Section>
+  );
+}
+
+function UpdateSettings() {
+  const store = useStore();
+  const u = store.update;
+  const status =
+    u.state === 'checking' ? 'Checking…'
+    : u.state === 'available' ? `Version ${u.info?.version} is available.`
+    : u.state === 'installing' ? 'Installing the update…'
+    : u.state === 'none' ? `You're on the latest version.`
+    : u.state === 'error' ? `Couldn't check: ${u.message}`
+    : '';
+  return (
+    <Section title="Updates">
+      <label className="flex items-start gap-3 text-[13px] text-ink-200">
+        <input type="checkbox" className="mt-0.5 accent-[#c7a04a]" checked={store.settings.autoUpdate} onChange={(e) => store.setSettings({ autoUpdate: e.target.checked })} />
+        <span>
+          Check for updates when the app starts
+          <span className="block text-[12px] text-ink-500">New versions come from the project's GitHub releases. Nothing installs without you clicking Update.</span>
+        </span>
+      </label>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          className="rounded border border-ink-600 px-2.5 py-1 text-[12.5px] text-ink-200 hover:bg-ink-800 disabled:opacity-40"
+          disabled={u.state === 'checking' || u.state === 'installing'}
+          onClick={() => store.checkForUpdates(true)}
+        >
+          Check now
+        </button>
+        {u.state === 'available' && (
+          <button className="rounded bg-emerald-700 px-2.5 py-1 text-[12.5px] font-semibold text-white hover:bg-emerald-600" onClick={() => store.installUpdate()}>
+            Update to {u.info?.version} and restart
+          </button>
+        )}
+        <span className={`text-[12px] ${u.state === 'error' ? 'text-amber-300' : 'text-ink-400'}`}>{status}</span>
+      </div>
+    </Section>
+  );
+}
+
+function UpdateDialog({ onClose }: { onClose: () => void }) {
+  const store = useStore();
+  const u = store.update;
+  const installing = u.state === 'installing';
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => !installing && onClose()}>
+      <div role="dialog" aria-label="Update available" className="w-full max-w-md rounded-lg border border-ink-600 bg-ink-900 p-6 shadow-tip" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-display text-lg text-gold-300">Update to {u.info?.version}</h2>
+        <p className="mt-1 text-[12.5px] text-ink-400">You have {__APP_VERSION__}. The app restarts after updating; your saves and vaults aren't touched.</p>
+        {u.info?.notes && <div className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded border border-ink-700 bg-ink-950 p-3 text-[12.5px] leading-relaxed text-ink-300">{u.info.notes}</div>}
+        {installing && (
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-800">
+            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((u.progress ?? 0.05) * 100)}%` }} />
+          </div>
+        )}
+        {store.dirtyDocs.length > 0 && !installing && <p className="mt-3 text-[12.5px] text-amber-300">Save or reload your {store.dirtyDocs.length} changed file(s) first.</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="rounded px-3 py-1.5 text-[13px] text-ink-300 hover:bg-ink-800 disabled:opacity-40" disabled={installing} onClick={onClose}>
+            Later
+          </button>
+          <button
+            className="rounded bg-emerald-700 px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-emerald-600 disabled:bg-ink-700 disabled:text-ink-400"
+            disabled={installing || store.dirtyDocs.length > 0}
+            onClick={() => store.installUpdate()}
+          >
+            {installing ? 'Updating…' : 'Update and restart'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

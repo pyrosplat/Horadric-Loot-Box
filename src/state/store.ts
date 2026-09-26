@@ -45,7 +45,7 @@ import {
   type ItemDescription,
   type Vault,
 } from '../core';
-import type { Platform, SaveFileEntry } from '../platform';
+import type { Platform, SaveFileEntry, UpdateInfo } from '../platform';
 import { ArtIndex } from '../art';
 import type { Held } from '../core';
 
@@ -107,6 +107,8 @@ export interface Settings {
   uiScale: number;
   /** Collections count runes and jewels socketed into items ("made" runes). */
   grailSocketed: boolean;
+  /** Look for a new release on GitHub when the app starts. */
+  autoUpdate: boolean;
   /** Game install or extracted data folder that artwork is read from (auto-detected when unset). */
   artPath?: string;
 }
@@ -161,7 +163,7 @@ export class Store {
   panes: [PaneState, PaneState] = [{ tab: 0 }, { tab: 0 }];
   toasts: Toast[] = [];
   history: Snapshot[] = [];
-  settings: Settings = { readOnly: false, itemView: 'art', vaultView: 'list', grailEth: false, uiScale: 1, grailSocketed: true };
+  settings: Settings = { readOnly: false, itemView: 'art', vaultView: 'list', grailEth: false, uiScale: 1, grailSocketed: true, autoUpdate: true };
   art?: ArtIndex;
   artStatus: { state: 'off' | 'loading' | 'ready' | 'missing' | 'error'; message: string } = { state: 'off', message: 'Not loaded' };
   busy = false;
@@ -189,6 +191,47 @@ export class Store {
   emit() {
     this.rev++;
     this.listeners.forEach((l) => l());
+  }
+
+  // ------------------------------------------------------------------ updates
+
+  update: { state: 'idle' | 'checking' | 'none' | 'available' | 'installing' | 'error'; info?: UpdateInfo; progress?: number; message?: string } = { state: 'idle' };
+
+  /** Asks GitHub for a newer release. Quiet unless `manual` (the Settings button). */
+  async checkForUpdates(manual = false) {
+    const u = this.platform.updates;
+    if (!u || this.update.state === 'checking' || this.update.state === 'installing') return;
+    this.update = { state: 'checking' };
+    this.emit();
+    try {
+      const info = await u.check();
+      this.update = info ? { state: 'available', info } : { state: 'none' };
+      if (manual && !info) this.toast('success', `You're on the latest version (${__APP_VERSION__}).`);
+    } catch (e) {
+      this.update = { state: 'error', message: (e as Error)?.message ?? String(e) };
+      if (manual) this.toast('error', `Couldn't check for updates: ${this.update.message}`);
+    }
+    this.emit();
+  }
+
+  /** Downloads and installs the available update, then restarts. Refused while there are unsaved changes. */
+  async installUpdate() {
+    const u = this.platform.updates;
+    if (!u || this.update.state !== 'available') return;
+    if (this.dirtyDocs.length) return this.toast('error', 'Save or reload your changes before updating.');
+    const info = this.update.info;
+    this.update = { state: 'installing', info, progress: 0 };
+    this.emit();
+    try {
+      await u.install((done, total) => {
+        this.update = { state: 'installing', info, progress: total ? done / total : undefined };
+        this.emit();
+      });
+    } catch (e) {
+      this.update = { state: 'available', info, message: (e as Error)?.message ?? String(e) };
+      this.toast('error', `Update failed: ${this.update.message}`);
+      this.emit();
+    }
   }
 
   toast(kind: Toast['kind'], text: string) {

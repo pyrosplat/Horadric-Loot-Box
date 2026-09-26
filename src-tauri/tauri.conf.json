@@ -27,10 +27,32 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "appimage", "deb"],
+    "targets": [
+      "nsis",
+      "msi",
+      "appimage",
+      "deb"
+    ],
     "category": "Utility",
     "shortDescription": "Diablo II: Resurrected muling tool",
     "longDescription": "Move items between offline Diablo II: Resurrected characters, shared stashes and unlimited vaults. Supports Reign of the Warlock (save v105).",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxRUQwODI2MjQ1NDAzNjYKUldSbUExUWtKZ2p0Z1lBRk9OdDgrRDVEMXAyMW1vNFp4eTVxZUtZcVp3SDh6MzVQd3d2V09NSDEK",
+      "endpoints": [
+        "https://github.com/pyrosplat/Horadric-Loot-Box/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

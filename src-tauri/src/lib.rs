@@ -485,6 +485,8 @@ pub fn run() {
     migrate_from_old_name();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(art::ArtState::default())
         .register_asynchronous_uri_scheme_protocol("hlbart", |ctx, request, responder| {
             let app = ctx.app_handle().clone();

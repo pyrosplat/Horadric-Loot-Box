@@ -12,6 +12,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 - **Holy grail tabs** for uniques, sets, runewords, runes and gems. They count your whole account, match the game's Chronicle totals, and highlight runewords you can make.
 - **Stackables and gold:** a Stackables tab laid out like the game's, and gold transfers between characters, stashes and vaults.
 - **Game-style display:** character screen layout, real item tooltips, and item art from your own game files.
+- **Automatic updates** from GitHub releases (asks before installing).
 - **Safe saving:** backups before every change, each save checked before it's written, no saving while the game runs, and hardcore/softcore and editions never mix.
 
 ![Uniques collection](docs/screenshots/uniques.png)
@@ -54,7 +55,7 @@ npm run desktop:dev    # desktop app (Tauri)
 npm run desktop:build  # installers
 ```
 
-Desktop builds need a C/C++ compiler: the Visual Studio Build Tools on Windows, or g++/clang elsewhere. Linux builds also need `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf`. Pushing a `v*` tag builds Windows and Linux installers as a draft GitHub release.
+Desktop builds need a C/C++ compiler: the Visual Studio Build Tools on Windows, or g++/clang elsewhere. Linux builds also need `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf`. Pushing a `v*` tag builds signed Windows and Linux installers as a draft GitHub release; see [RELEASING.md](RELEASING.md). The app updates itself from published releases.
 
 For a new game patch, replace the tables in `vendor/d2r-3.3/`, then run `npm run gamedata && npm test`.
 
