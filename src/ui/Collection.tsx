@@ -9,8 +9,8 @@ import { QUALITY_TEXT, useTooltip } from './Tooltip';
 const LEGACY = 'Not tracked by the game (legacy or unobtainable)';
 
 // found/missing counts include the whole account: vault copies are lit, copies elsewhere are faded
-const KIND_LABEL: Record<CollectionKind, string> = { unique: 'Uniques', set: 'Sets', runeword: 'Runewords', rune: 'Runes' };
-const FOUND_BORDER: Record<CollectionKind, string> = { unique: '#b9a063', set: '#2fb82f', runeword: '#b9a063', rune: '#e38a1f' };
+const KIND_LABEL: Record<CollectionKind, string> = { unique: 'Uniques', set: 'Sets', runeword: 'Runewords', rune: 'Runes', gem: 'Gems' };
+const FOUND_BORDER: Record<CollectionKind, string> = { unique: '#b9a063', set: '#2fb82f', runeword: '#b9a063', rune: '#e38a1f', gem: '#8fb8e8' };
 
 /** A stand-in item for a catalog entry that isn't stored, so it can show its picture and a basic tooltip. */
 const phantoms = new Map<string, D2Item | undefined>();
@@ -25,7 +25,7 @@ function makePhantom(kind: CollectionKind, e: CatalogEntry): D2Item | undefined 
   return {
     saveVersion: 105, raw: new Uint8Array(0), sockets: [], flags: ItemFlag.Identified, formatVersion: 5, mode: 0, bodyLoc: 0, x: 0, y: 0, page: 4,
     code, def: GD.items[code], compact: false, identified: true, ethereal: false, socketed: false, runeword: false, itemLevel: 1,
-    quality: kind === 'set' ? Quality.Set : kind === 'rune' ? Quality.Normal : Quality.Unique,
+    quality: kind === 'set' ? Quality.Set : kind === 'rune' || kind === 'gem' ? Quality.Normal : Quality.Unique,
     compactRune: undefined, uniqueId: kind === 'unique' ? e.id : undefined, setId: kind === 'set' ? e.id : undefined,
     prefixes: [], suffixes: [], socketCount: 0, stats: [], setBonusStats: [], runewordStats: [], filledSockets: 0,
   } as D2Item;
@@ -93,7 +93,8 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const allHeld = store.held(docId);
   // runes socketed into items count only when "Include runes in items" is on; socketed jewels always count
-  const withSocketed = kind !== 'rune' || store.settings.grailSocketed !== false;
+  const socketable = kind === 'rune' || kind === 'gem';
+  const withSocketed = !socketable || store.settings.grailSocketed !== false;
   const held = useMemo(() => (withSocketed ? allHeld : allHeld.filter((h) => !h.socketedIn)), [allHeld, withSocketed]);
   const have = useMemo(() => collectHeld(kind, held, split), [kind, held, split]);
   const runesOwned = useMemo(() => (kind === 'runeword' ? runeCounts(held) : new Map<string, number>()), [kind, held]);
@@ -122,17 +123,17 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
   for (const sl of visible) {
     const e = sl.entry;
     if (e.legacy) push(LEGACY, sl);
-    else if (kind === 'set' || kind === 'rune') push(e.group ?? KIND_LABEL[kind], sl);
+    else if (kind === 'set' || kind === 'rune' || kind === 'gem') push(e.group ?? KIND_LABEL[kind], sl);
     else if (e.category === 'Weapons' && e.sub) push(`Weapons · ${e.sub}`, sl);
     else push(e.category, sl);
   }
-  if (kind !== 'set' && kind !== 'rune') sections.sort((a, b) => CATEGORIES.indexOf(a.title.split(' · ')[0] as never) - CATEGORIES.indexOf(b.title.split(' · ')[0] as never) || a.title.localeCompare(b.title));
+  if (kind !== 'set' && kind !== 'rune' && kind !== 'gem') sections.sort((a, b) => CATEGORIES.indexOf(a.title.split(' · ')[0] as never) - CATEGORIES.indexOf(b.title.split(' · ')[0] as never) || a.title.localeCompare(b.title));
 
   const foundAll = tracked.filter((sl) => have.has(sl.key)).length;
   // legacy copies always go last
   const li = sections.findIndex((x) => x.title === LEGACY);
   if (li >= 0) sections.push(...sections.splice(li, 1));
-  const cats = kind === 'rune' ? [] : ['All', ...CATEGORIES.filter((c) => all.some((sl) => sl.entry.category === c))];
+  const cats = kind === 'rune' || kind === 'gem' ? [] : ['All', ...CATEGORIES.filter((c) => all.some((sl) => sl.entry.category === c))];
   const pct = tracked.length ? Math.round((foundAll / tracked.length) * 100) : 0;
   const cellW = 76, img = 46;
 
@@ -171,10 +172,10 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
               Highlight makeable {all.filter((sl) => !sl.eth && makeable(sl.entry)).length}
             </button>
           )}
-          {kind === 'rune' && (
-            <label className="mr-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-300" title="Count runes socketed into items (runewords and socketed gear) anywhere on the account">
+          {socketable && (
+            <label className="mr-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-300" title={`Count ${kind}s socketed into items anywhere on the account (shared with the ${kind === 'rune' ? 'Gems' : 'Runes'} tab)`}>
               <input type="checkbox" className="accent-[#9ab8d8]" checked={withSocketed} onChange={(e) => store.setSettings({ grailSocketed: e.target.checked })} />
-              Include runes in items
+              Include {kind}s in items
             </label>
           )}
           {kind === 'unique' && (

@@ -578,3 +578,14 @@ describe('stackables: Shift ×3 and one-at-a-time deletes', () => {
     expect((roundTrip(modern()) as D2SharedStash).tabs[stackTab()].items.find((i) => i.code === 'r22')?.advancedStackSize ?? 0).toBe(before - 1);
   });
 });
+
+describe('gems collection', () => {
+  test('35 gems in seven groups, Chipped to Perfect', async () => {
+    const { catalog, slots } = await import('../src/core');
+    const gems = catalog('gem');
+    expect(gems.length).toBe(35);
+    expect([...new Set(gems.map((g) => g.group))]).toEqual(['Amethyst', 'Diamond', 'Emerald', 'Ruby', 'Sapphire', 'Topaz', 'Skull']);
+    expect(gems.slice(0, 5).map((g) => g.name)).toEqual(['Chipped Amethyst', 'Flawed Amethyst', 'Amethyst', 'Flawless Amethyst', 'Perfect Amethyst']);
+    expect(slots('gem', true).length).toBe(35);
+  });
+});

@@ -11,7 +11,6 @@ const FILTERS: { key: string; label: string; test: (q: QualityClass) => boolean 
   { key: 'all', label: 'All', test: () => true },
   { key: 'rare', label: 'Rare/Craft', test: (q) => q === 'rare' || q === 'crafted' || q === 'tempered' },
   { key: 'magic', label: 'Magic', test: (q) => q === 'magic' },
-  { key: 'gem', label: 'Gems', test: (q) => q === 'gem' },
   { key: 'base', label: 'Bases', test: (q) => q === 'normal' || q === 'superior' || q === 'inferior' },
 ];
 
@@ -21,6 +20,7 @@ const TABS: { id: 'items' | CollectionKind; label: string; kind?: CollectionKind
   { id: 'set', label: 'Sets', kind: 'set' },
   { id: 'runeword', label: 'Runewords', kind: 'runeword' },
   { id: 'rune', label: 'Runes', kind: 'rune' },
+  { id: 'gem', label: 'Gems', kind: 'gem' },
 ];
 
 type Sort = 'recent' | 'oldest' | 'name' | 'levelAsc' | 'levelDesc' | 'quality';
@@ -35,8 +35,8 @@ const SORTS: [Sort, string][] = [
 
 /** 'all', 'group:Weapons' or a single type like 'Swords'. */
 const typeMatches = (want: string, t: string) => want === 'all' || t === want || want === `group:${groupOfType(t)}`;
-/** Uniques, sets and runewords live in their own collection tabs, not in the Items list. */
-const IN_COLLECTION = new Set<QualityClass>(['unique', 'set', 'runeword', 'rune']);
+/** Uniques, sets, runewords, runes and gems live in their own collection tabs, not in the Items list. */
+const IN_COLLECTION = new Set<QualityClass>(['unique', 'set', 'runeword', 'rune', 'gem']);
 
 const Q_ORDER: QualityClass[] = ['rare', 'crafted', 'tempered', 'magic', 'rune', 'gem', 'superior', 'normal', 'inferior', 'quest', 'gold'];
 
@@ -59,10 +59,10 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
     const loose = everything.filter((h) => !h.socketedIn);
     const here = loose.filter((h) => h.inVault);
     const out = {} as Record<CollectionKind, { account: { found: number; total: number }; vault: number }>;
-    for (const kind of ['unique', 'set', 'runeword', 'rune'] as CollectionKind[]) {
+    for (const kind of ['unique', 'set', 'runeword', 'rune', 'gem'] as CollectionKind[]) {
       const split = kind === 'unique' && store.settings.grailEth;
-      // runes socketed into items count only with "Include runes in items"; socketed jewels always count
-      const all = kind === 'rune' && store.settings.grailSocketed === false ? loose : everything;
+      // runes and gems socketed into items count only with "Include … in items"; socketed jewels always count
+      const all = (kind === 'rune' || kind === 'gem') && store.settings.grailSocketed === false ? loose : everything;
       out[kind] = { account: progress(kind, split, collectHeld(kind, all, split)), vault: progress(kind, split, collectHeld(kind, here, split)).found };
     }
     return out;

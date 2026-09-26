@@ -14,7 +14,7 @@ export const TYPE_GROUPS: { group: string; types: string[] }[] = [
     ],
   },
   { group: 'Jewelry & Charms', types: ['Amulets', 'Rings', 'Small Charms', 'Large Charms', 'Grand Charms', 'Jewels'] },
-  { group: 'Other', types: ['Gems', 'Potions', 'Scrolls & Tomes', 'Keys', 'Quest & Uber Items', 'Other'] },
+  { group: 'Other', types: ['Potions', 'Scrolls & Tomes', 'Keys', 'Quest & Uber Items', 'Other'] },
 ];
 
 // most specific type codes first: a Barbarian helm is also a helm, an Amazon bow is also a bow…

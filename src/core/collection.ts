@@ -108,16 +108,41 @@ export function runeCatalog(): CatalogEntry[] {
   })));
 }
 
-export type CollectionKind = 'unique' | 'set' | 'runeword' | 'rune';
+const GEM_TYPES: [string, string][] = [['gema', 'Amethyst'], ['gemd', 'Diamond'], ['geme', 'Emerald'], ['gemr', 'Ruby'], ['gems', 'Sapphire'], ['gemt', 'Topaz'], ['gemz', 'Skull']];
+/** Every gem code, by gem type then grade (Chipped → Perfect). */
+export const GEM_CODES: string[] = GEM_TYPES.flatMap(([t]) =>
+  Object.entries(GD.items)
+    .filter(([, d]) => d.type === t)
+    .sort(([, a], [, b]) => a.levelReq - b.levelReq || a.index - b.index)
+    .map(([code]) => code),
+);
+
+let gems: CatalogEntry[] | undefined;
+export function gemCatalog(): CatalogEntry[] {
+  return (gems ??= GEM_CODES.map((code, i) => ({
+    id: i + 1,
+    name: GD.items[code].name,
+    code,
+    category: 'Other' as Category,
+    levelReq: GD.items[code].levelReq,
+    group: GEM_TYPES.find(([t]) => t === GD.items[code].type)?.[1] ?? 'Gems',
+  })));
+}
+
+export type CollectionKind = 'unique' | 'set' | 'runeword' | 'rune' | 'gem';
 
 export function catalog(kind: CollectionKind): CatalogEntry[] {
-  return kind === 'unique' ? uniqueCatalog() : kind === 'set' ? setCatalog() : kind === 'rune' ? runeCatalog() : runewordCatalog();
+  return kind === 'unique' ? uniqueCatalog() : kind === 'set' ? setCatalog() : kind === 'rune' ? runeCatalog() : kind === 'gem' ? gemCatalog() : runewordCatalog();
 }
 
 /** Which catalog entry a stored item fills, if any. */
 export function collectionKey(kind: CollectionKind, item: D2Item): number | undefined {
   if (kind === 'unique') return item.quality === Quality.Unique ? item.uniqueId : undefined;
   if (kind === 'set') return item.quality === Quality.Set ? item.setId : undefined;
+  if (kind === 'gem') {
+    const i = GEM_CODES.indexOf(item.code);
+    return i >= 0 ? i + 1 : undefined;
+  }
   if (kind === 'rune') {
     const i = RUNE_CODES.indexOf(item.code);
     return i >= 0 ? i + 1 : undefined;

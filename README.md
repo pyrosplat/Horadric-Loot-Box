@@ -9,7 +9,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 - **Two-pane muling:** drag characters, shared stashes or vaults from the sidebar onto either side, then drag items between them.
 - **Equip from anywhere:** onto a character, weapon swap, mercenary or belt.
 - **Unlimited vaults** with search, quality and item-type filters, and sorting.
-- **Holy grail tabs** for uniques, sets, runewords and runes. They count your whole account, match the game's Chronicle totals, and highlight runewords you can make.
+- **Holy grail tabs** for uniques, sets, runewords, runes and gems. They count your whole account, match the game's Chronicle totals, and highlight runewords you can make.
 - **Stackables and gold:** a Stackables tab laid out like the game's, and gold transfers between characters, stashes and vaults.
 - **Game-style display:** character screen layout, real item tooltips, and item art from your own game files.
 - **Safe saving:** backups before every change, each save checked before it's written, no saving while the game runs, and hardcore/softcore and editions never mix.
@@ -23,7 +23,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 3. Drag a character, stash or vault from the sidebar onto the left or right side.
 4. Move items, then click **Save**.
 
-**Game art (optional):** extract the game's `data` folder with [CascView](http://www.zezula.net/en/casc/main.html). Then set its location in **Settings → Items → Game art**. Without it, items show as tiles.
+**Game art (optional):** extract the game's `data` folder with [CascView](http://www.zezula.net/en/casc/main.html) or [D2RMM](https://github.com/olegbl/d2rmm). Then set its location in **Settings → Items → Game art**. Without it, items show as tiles.
 
 **Saves:** `%USERPROFILE%\Saved Games\Diablo II Resurrected` on Windows, or the same path inside your Proton/Wine prefix on Linux.<br>
 **Vaults and backups:** `%APPDATA%\com.horadriclootbox.app\` on Windows, or `~/.local/share/com.horadriclootbox.app/` on Linux.
