@@ -97,7 +97,6 @@ export type ItemView = 'art' | 'artNames' | 'tiles';
 export interface Settings {
   /** Blocks every move and save, for browsing without risk. */
   readOnly: boolean;
-  confirmBeforeSave: boolean;
   /** How items are drawn: game artwork, artwork with names on top, or the text tiles. */
   itemView: ItemView;
   /** Vault items as a list or as cards. */
@@ -162,7 +161,7 @@ export class Store {
   panes: [PaneState, PaneState] = [{ tab: 0 }, { tab: 0 }];
   toasts: Toast[] = [];
   history: Snapshot[] = [];
-  settings: Settings = { readOnly: false, confirmBeforeSave: true, itemView: 'art', vaultView: 'list', grailEth: false, uiScale: 1, grailSocketed: true };
+  settings: Settings = { readOnly: false, itemView: 'art', vaultView: 'list', grailEth: false, uiScale: 1, grailSocketed: true };
   art?: ArtIndex;
   artStatus: { state: 'off' | 'loading' | 'ready' | 'missing' | 'error'; message: string } = { state: 'off', message: 'Not loaded' };
   busy = false;

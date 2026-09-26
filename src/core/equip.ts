@@ -22,7 +22,6 @@ export const SLOT_CODE: Record<number, string> = {
   12: 'larm',
 };
 
-export const BODY_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 /** Mercenaries only use helm, armor and their hands. */
 export const MERC_SLOTS = [1, 3, 4, 5];
 

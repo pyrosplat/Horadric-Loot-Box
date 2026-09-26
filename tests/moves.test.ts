@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import fs from 'node:fs';
-import { GD, ItemMode, Quality, canEquip, parseCharacter, parseStash, serializeVerified, type D2Character, type D2Item, type D2SharedStash } from '../src/core';
+import { GD, ItemMode, Quality, canEquip, collectHeld, parseCharacter, parseStash, serializeVerified, type CollectionKind, type D2Character, type D2Item, type D2SharedStash } from '../src/core';
 import type { Platform } from '../src/platform';
 import { Store } from '../src/state/store';
+
+/** Copies per collection slot for a plain list of items. */
+const collect = (kind: CollectionKind, items: D2Item[], splitEthereal = false) =>
+  new Map([...collectHeld(kind, items.map((item) => ({ item, docId: 'x', where: 'x', inVault: true })), splitEthereal)].map(([k, v]) => [k, v.map((h) => h.item)]));
 
 const FILES = ['ChaosSC.d2s', 'Warlock_v105.d2s', 'barbexp_v105.d2s', 'Soska.d2s', 'ModernSharedStashSoftCoreV2.d2i', 'SharedStashSoftCoreV2.d2i'];
 
@@ -346,7 +350,7 @@ describe('vault names', () => {
 
 describe('vault collections', () => {
   test('uniques, sets and runewords are matched and duplicates stack', async () => {
-    const { collect, catalog, runewordFor, Quality } = await import('../src/core');
+    const { catalog, runewordFor, Quality } = await import('../src/core');
     const items = [...chaos().items, ...chaos().items.flatMap((i) => i.sockets)];
     const u = items.find((i) => i.quality === Quality.Unique)!;
     const rw = items.find((i) => i.runeword)!;
@@ -377,7 +381,7 @@ describe('deleting vaults', () => {
 
 describe('runes and ethereal in collections', () => {
   test('runes: 33 slots in three groups, duplicates stack', async () => {
-    const { catalog, collect } = await import('../src/core');
+    const { catalog } = await import('../src/core');
     const runes = catalog('rune');
     expect(runes).toHaveLength(33);
     expect(runes[0].name).toBe('El Rune');
@@ -391,7 +395,7 @@ describe('runes and ethereal in collections', () => {
   });
 
   test('ethereal copies get their own slot only for items that can be ethereal', async () => {
-    const { canBeEthereal, catalog, collect, slots, Quality } = await import('../src/core');
+    const { canBeEthereal, catalog, slots, Quality } = await import('../src/core');
     const byName = (n: string) => catalog('unique').find((e) => e.name === n)!;
     expect(canBeEthereal('unique', byName('Harlequin Crest'))).toBe(true);
     expect(canBeEthereal('unique', byName('The Stone of Jordan'))).toBe(false);
@@ -514,7 +518,7 @@ describe('account-wide collections', () => {
 
 describe('ethereal slots are for uniques only', () => {
   test('sets and runewords never get an eth slot', async () => {
-    const { slots, canBeEthereal, catalog, collect, Quality } = await import('../src/core');
+    const { slots, canBeEthereal, catalog, Quality } = await import('../src/core');
     expect(slots('set', true).length).toBe(slots('set', false).length);
     expect(slots('runeword', true).length).toBe(slots('runeword', false).length);
     expect(catalog('set').some((e) => canBeEthereal('set', e))).toBe(false);

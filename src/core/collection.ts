@@ -141,23 +141,6 @@ export function canBeEthereal(kind: CollectionKind, e: CatalogEntry): boolean {
 export const slotKey = (id: number, eth: boolean) => (eth ? `${id}:eth` : String(id));
 
 /**
- * Stored copies per slot (duplicates stack). With `splitEthereal`, ethereal copies of items that can be
- * ethereal go to their own `id:eth` slot.
- */
-export function collect(kind: CollectionKind, items: D2Item[], splitEthereal = false): Map<string, D2Item[]> {
-  const out = new Map<string, D2Item[]>();
-  for (const it of items) {
-    const k = collectionKey(kind, it);
-    if (k === undefined) continue;
-    const key = slotKey(k, splitEthereal && it.ethereal && kind === 'unique');
-    const list = out.get(key) ?? [];
-    list.push(it);
-    out.set(key, list);
-  }
-  return out;
-}
-
-/**
  * Every slot of a catalog: one per entry, plus an ethereal one for entries that can be ethereal (when split).
  * Legacy entries (not in the game's Chronicle) are only included when `have` holds a copy.
  */

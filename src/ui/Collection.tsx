@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CATEGORIES, GD, ItemFlag, Quality, canMake, collectHeld, countHeld, runeCounts, slots, type CatalogEntry, type CollectionKind, type D2Item, type Held, type Vault } from '../core';
+import { CATEGORIES, GD, ItemFlag, Quality, canMake, collectHeld, countHeld, runeCounts, slots, type CatalogEntry, type CollectionKind, type D2Item, type Held } from '../core';
 import { desc } from '../state/store';
 import { endDrag, startDrag, useStore, countFor } from './context';
 import { GlyphIcon, glyphFor } from './glyphs';
@@ -82,7 +82,7 @@ interface Section {
  * Path of Exile-style collection tab: one slot for every unique, set item or runeword in the game. Stored ones
  * are lit (duplicates stack with a count); missing ones are dimmed. Drag or double-click a lit slot to take one out.
  */
-export function CollectionView({ docId, vault, pane, kind, query }: { docId: string; vault: Vault; pane: 0 | 1; kind: CollectionKind; query: string }) {
+export function CollectionView({ docId, pane, kind, query }: { docId: string; pane: 0 | 1; kind: CollectionKind; query: string }) {
   const store = useStore();
   const tip = useTooltip();
   const [cat, setCat] = useState<string>('All');

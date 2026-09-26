@@ -1,4 +1,4 @@
-import type { BitReader, BitWriter } from './bits';
+import type { BitReader } from './bits';
 
 // D2R item code Huffman table: [symbol, code (MSB-first), length]
 const TABLE: [string, number, number][] = [
@@ -13,13 +13,7 @@ const TABLE: [string, number, number][] = [
 ];
 
 const decode = new Map<string, string>(); // key: `${length}:${code}`
-const encode = new Map<string, { bits: number; length: number }>();
-for (const [sym, code, length] of TABLE) {
-  decode.set(`${length}:${code}`, sym);
-  let rev = 0;
-  for (let i = 0; i < length; i++) rev |= ((code >> i) & 1) << (length - 1 - i);
-  encode.set(sym, { bits: rev, length });
-}
+for (const [sym, code, length] of TABLE) decode.set(`${length}:${code}`, sym);
 
 /** Decodes a 4-character item code (trailing spaces are kept, e.g. "cap "). */
 export function decodeItemCode(r: BitReader): string {
@@ -38,13 +32,4 @@ export function decodeItemCode(r: BitReader): string {
     out += sym;
   }
   return out;
-}
-
-export function encodeItemCode(w: BitWriter, code: string): void {
-  const padded = code.padEnd(4, ' ').slice(0, 4);
-  for (const ch of padded) {
-    const e = encode.get(ch);
-    if (!e) throw new Error(`Character '${ch}' is not encodable`);
-    w.writeBits(e.bits, e.length);
-  }
 }

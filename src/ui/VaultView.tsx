@@ -5,7 +5,6 @@ import { ItemThumb } from './ItemArt';
 import { desc, itemKey, potLabel } from '../state/store';
 import { GoldBar } from './Gold';
 import { drag, dropDragged, endDrag, startDrag, useStore, countFor } from './context';
-import { GlyphIcon, glyphFor } from './glyphs';
 import { QUALITY_TEXT, useTooltip } from './Tooltip';
 
 const FILTERS: { key: string; label: string; test: (q: QualityClass) => boolean }[] = [
@@ -261,7 +260,7 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
 
         </>
       ) : (
-        <CollectionView docId={docId} vault={vault} pane={pane} kind={tab} query={query} />
+        <CollectionView docId={docId} pane={pane} kind={tab} query={query} />
       )}
     </div>
   );
