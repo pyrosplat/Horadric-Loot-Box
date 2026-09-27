@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.3
+
+- Clearer set bonuses in tooltips: grouped under small headings ("This item · 2 pieces", the set's name, "2 pieces", "Full set") in smaller text, with the set-wide bonuses in a softer green, instead of "(2 items)" after every line.
+
 ## 1.1.2
 
 - The app remembers your save folder and reopens it at launch, so you only choose it once (handy on Linux, where saves live inside a Proton/Wine prefix). Settings → "Open a different folder" switches to another one; if the folder has moved, you're asked to choose again.

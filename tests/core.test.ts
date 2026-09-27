@@ -225,7 +225,10 @@ describe('item stats from the game tables', () => {
     const cta = mods(describeTemplate('runeword', GD.runewords.find((r) => r.name === 'Call to Arms')!.row));
     expect(cta).toContain('+(1–6) to Battle Orders');
     const tal = describeTemplate('set', find(GD.setItems, "Tal Rasha's Guardianship"))!;
-    expect(tal.lines.filter((l) => l.kind === 'setbonus').map((l) => l.text)).toContain('+3 to Sorceress Skill Levels (full set)');
+    const bonus = tal.lines.filter((l) => l.kind === 'setbonus');
+    expect(bonus.find((l) => l.text === '+3 to Sorceress Skill Levels')?.bonus).toEqual({ scope: 'set', when: 'Full set' });
+    expect(bonus.find((l) => l.text === '+10% Faster Cast Rate')?.bonus).toEqual({ scope: 'item', when: '2 pieces' });
+    expect(tal.lines.find((l) => l.heading)?.text).toBe("Tal Rasha's Wrappings");
   });
   test('found items show where each roll lands', () => {
     const ch = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/ChaosSC.d2s')));

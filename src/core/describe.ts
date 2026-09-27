@@ -11,6 +11,10 @@ export interface DescLine {
   range?: string;
   /** The roll is the best possible. */
   perfect?: boolean;
+  /** Set bonuses: who gets it (this item, or the whole set) and when ("2 pieces", "Full set"). */
+  bonus?: { scope: 'item' | 'set'; when: string };
+  /** A section heading (the set's name). */
+  heading?: boolean;
 }
 
 export interface ItemDescription {
@@ -500,7 +504,7 @@ export function describeItem(item: D2Item): ItemDescription {
   if (item.personalizedName) lines.push({ text: GD.ui.ItemModifierPersonalized ?? 'Personalized', kind: 'flag' });
 
   item.setBonusStats.forEach((list, i) => {
-    for (const t of describeStats(list)) lines.push({ text: `${t} (${i + 2} items)`, kind: 'setbonus' });
+    for (const t of describeStats(list)) lines.push({ text: t, kind: 'setbonus', bonus: { scope: 'item', when: `${i + 2} pieces` } });
   });
   if (qc === 'set') {
     const si = GD.setItems[item.setId ?? -1];
@@ -549,10 +553,10 @@ function shortLabel(item: D2Item, name: string): string {
 /** The set's name and the bonuses the whole set gives (partial and full), as set-bonus lines. */
 function setLines(key: string, fallbackName: string): DescLine[] {
   const set = GD.sets[key];
-  const out: DescLine[] = [{ text: set?.name ?? fallbackName, kind: 'info' }];
+  const out: DescLine[] = [{ text: set?.name ?? fallbackName, kind: 'info', heading: true }];
   if (set) {
-    for (const [n, props] of set.partial) for (const l of propLines(props)) out.push({ text: `${l.text} (${n} items)`, kind: 'setbonus' });
-    for (const l of propLines(set.full)) out.push({ text: `${l.text} (full set)`, kind: 'setbonus' });
+    for (const [n, props] of set.partial) for (const l of propLines(props)) out.push({ text: l.text, kind: 'setbonus', bonus: { scope: 'set', when: `${n} pieces` } });
+    for (const l of propLines(set.full)) out.push({ text: l.text, kind: 'setbonus', bonus: { scope: 'set', when: 'Full set' } });
   }
   return out;
 }
@@ -592,7 +596,7 @@ export function describeTemplate(kind: 'unique' | 'set' | 'runeword', id: number
     for (const l of propLines(row.props)) mod(l.text);
     if (kind === 'set') {
       const si = GD.setItems[id];
-      for (const [n, props] of si.partial) for (const l of propLines(props)) lines.push({ text: `${l.text} (${n} items)`, kind: 'setbonus' });
+      for (const [n, props] of si.partial) for (const l of propLines(props)) lines.push({ text: l.text, kind: 'setbonus', bonus: { scope: 'item', when: `${n} pieces` } });
       lines.push(...setLines(si.setKey, si.set));
     }
   }

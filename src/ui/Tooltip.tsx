@@ -76,35 +76,58 @@ export function ItemCard({ item, desc: given, extra, className = '' }: { item?: 
   return (
     <div className={`w-[300px] max-w-[85vw] rounded-md border border-ink-600 bg-ink-950/95 px-4 py-3 text-center text-[13px] leading-snug shadow-tip backdrop-blur ${className}`}>
       <div className={`font-display text-[15px] font-semibold tracking-wide ${color}`}>{d.name}</div>
-      {d.lines.map((l, i) => (
-        <div
-          key={i}
-          className={
-            l.kind === 'base'
-              ? i === 0 && d.baseName === l.text
-                ? color
-                : 'text-ink-200'
-              : l.kind === 'req'
-                ? 'text-ink-200'
-                : l.kind === 'mod'
-                  ? 'text-q-magic'
-                  : l.kind === 'setbonus'
-                    ? 'text-q-set'
-                    : l.kind === 'socket'
-                      ? 'text-ink-400'
-                      : l.kind === 'flag'
-                        ? 'text-ink-300'
-                        : 'text-ink-400 text-[12px]'
-          }
-        >
-          {l.text}
-          {l.range && (
-            <span className={`ml-1.5 text-[11px] ${l.perfect ? 'text-gold-300' : 'text-ink-500'}`} title={l.perfect ? 'Perfect roll' : `Possible roll: ${l.range}`}>
-              [{l.range}]{l.perfect ? ' ★' : ''}
-            </span>
-          )}
-        </div>
-      ))}
+      {d.lines.map((l, i) => {
+        const prev = d.lines[i - 1];
+        if (l.heading)
+          return (
+            <div key={i} className="mt-2.5 border-t border-ink-700 pt-2 font-display text-[12px] uppercase tracking-[.14em] text-q-set">
+              {l.text}
+            </div>
+          );
+        if (l.kind === 'setbonus' && l.bonus) {
+          const first = !prev?.bonus || prev.bonus.scope !== l.bonus.scope || prev.bonus.when !== l.bonus.when;
+          const label = l.bonus.scope === 'item' ? `This item · ${l.bonus.when}` : l.bonus.when;
+          return (
+            <div key={i}>
+              {first && (
+                <div className={`text-[10px] uppercase tracking-[.12em] text-ink-500 ${l.bonus.scope === 'item' && !prev?.bonus ? 'mt-2.5 border-t border-ink-700 pt-2' : 'mt-1.5'}`}>
+                  {label}
+                </div>
+              )}
+              <div className={`text-[12px] leading-snug ${l.bonus.scope === 'item' ? 'text-q-set' : 'text-[#7fae7f]'}`}>{l.text}</div>
+            </div>
+          );
+        }
+        return (
+          <div
+            key={i}
+            className={
+              l.kind === 'base'
+                ? i === 0 && d.baseName === l.text
+                  ? color
+                  : 'text-ink-200'
+                : l.kind === 'req'
+                  ? 'text-ink-200'
+                  : l.kind === 'mod'
+                    ? 'text-q-magic'
+                    : l.kind === 'setbonus'
+                      ? 'text-q-set'
+                      : l.kind === 'socket'
+                        ? 'text-ink-400'
+                        : l.kind === 'flag'
+                          ? 'text-ink-300'
+                          : 'text-ink-400 text-[12px]'
+            }
+          >
+            {l.text}
+            {l.range && (
+              <span className={`ml-1.5 text-[11px] ${l.perfect ? 'text-gold-300' : 'text-ink-500'}`} title={l.perfect ? 'Perfect roll' : `Possible roll: ${l.range}`}>
+                [{l.range}]{l.perfect ? ' ★' : ''}
+              </span>
+            )}
+          </div>
+        );
+      })}
       {extra && <div className="mt-2 border-t border-ink-700 pt-2 text-[11px] text-ink-400">{extra}</div>}
     </div>
   );
