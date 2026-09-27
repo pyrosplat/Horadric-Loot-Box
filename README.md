@@ -15,7 +15,9 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 - **Automatic updates** from GitHub releases (asks before installing).
 - **Safe saving:** backups before every change, each save checked before it's written, no saving while the game runs, and hardcore/softcore and editions never mix.
 
-![Uniques collection](docs/screenshots/uniques.png)
+| Uniques | Runewords | Stackables |
+| --- | --- | --- |
+| ![Uniques collection](docs/screenshots/uniques.png) | ![Runewords collection](docs/screenshots/runewords.png) | ![Stackables tab](docs/screenshots/stackables.png) |
 
 ## Getting started
 
@@ -28,7 +30,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 
 **Saves:** `%USERPROFILE%\Saved Games\Diablo II Resurrected` on Windows, or the same path inside your Proton/Wine prefix on Linux.<br>
 **Vaults** are kept in a `HoradricLootBox-Vaults` folder inside your save folder, so backing up your saves backs up your vaults too. Vaults from older versions are copied there on first launch.<br>
-**Backups** made before each save go in `%APPDATA%\com.horadriclootbox.app\backups` on Windows, or `~/.local/share/com.horadriclootbox.app/backups` on Linux.
+**Backups** made before each save (the last 10 copies of each file) go in `%APPDATA%\com.horadriclootbox.app\backups` on Windows, or `~/.local/share/com.horadriclootbox.app/backups` on Linux.
 
 ## Shortcuts
 

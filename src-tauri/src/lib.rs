@@ -233,7 +233,40 @@ fn backup_files(app: AppHandle, paths: Vec<String>) -> Result<String, String> {
             }
         }
     }
+    if let Some(root) = dir.parent() {
+        prune_backups(root, BACKUPS_PER_FILE);
+    }
     Ok(dir.to_string_lossy().into_owned())
+}
+
+/// How many backup copies of each save file are kept.
+const BACKUPS_PER_FILE: usize = 10;
+
+/// Keeps only the newest `keep` copies of each file across the timestamped backup folders (their names sort
+/// by time), then removes folders left empty. Copies kept when a character or vault was deleted are never pruned.
+fn prune_backups(root: &Path, keep: usize) {
+    let mut dirs: Vec<PathBuf> = children(root)
+        .into_iter()
+        .filter(|d| d.is_dir() && !d.file_name().map(|n| n.to_string_lossy().contains("_deleted")).unwrap_or(true))
+        .collect();
+    dirs.sort();
+    dirs.reverse(); // newest first
+    let mut seen: std::collections::HashMap<std::ffi::OsString, usize> = std::collections::HashMap::new();
+    for d in &dirs {
+        for f in children(d) {
+            if !f.is_file() {
+                continue;
+            }
+            let n = seen.entry(f.file_name().unwrap().to_os_string()).or_insert(0);
+            *n += 1;
+            if *n > keep {
+                let _ = fs::remove_file(&f);
+            }
+        }
+        if children(d).is_empty() {
+            let _ = fs::remove_dir(d);
+        }
+    }
 }
 
 /// Vaults live in a folder next to the character saves, so backing up the save folder backs them up too.
@@ -527,6 +560,32 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn backups_keep_the_newest_ten_copies_of_each_file() {
+        let d = temp_dir("prune");
+        for i in 0..14 {
+            let b = d.join(format!("2026-09-{:02}_12-00-00", i + 1));
+            fs::create_dir_all(&b).unwrap();
+            fs::write(b.join("Hero.d2s"), format!("{}", i)).unwrap();
+            if i < 3 {
+                fs::write(b.join("Other.d2s"), "x").unwrap();
+            }
+        }
+        let del = d.join("2026-01-01_00-00-00_deleted_Old");
+        fs::create_dir_all(&del).unwrap();
+        fs::write(del.join("Hero.d2s"), "gone").unwrap();
+        prune_backups(&d, 10);
+        let heroes = children(&d).iter().filter(|b| b.join("Hero.d2s").is_file()).count();
+        assert_eq!(heroes, 11, "10 kept + the deleted-character copy");
+        assert!(!d.join("2026-09-04_12-00-00").exists(), "oldest folders removed once empty");
+        assert!(d.join("2026-09-05_12-00-00/Hero.d2s").is_file());
+        assert!(d.join("2026-09-14_12-00-00/Hero.d2s").is_file());
+        // Other.d2s has only 3 copies: all kept, so their folders stay
+        assert!(d.join("2026-09-01_12-00-00/Other.d2s").is_file());
+        assert!(!d.join("2026-09-01_12-00-00/Hero.d2s").exists());
+        assert!(del.join("Hero.d2s").is_file());
     }
 
     #[test]
