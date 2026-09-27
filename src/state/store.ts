@@ -109,6 +109,8 @@ export interface Settings {
   grailSocketed: boolean;
   /** Look for a new release on GitHub when the app starts. */
   autoUpdate: boolean;
+  /** The save folder opened last (desktop app): reopened automatically at the next launch. */
+  lastFolder?: string;
   /** Game install or extracted data folder that artwork is read from (auto-detected when unset). */
   artPath?: string;
 }
@@ -117,6 +119,16 @@ interface Snapshot {
   label: string;
   /** Per document: puts its items and gold back, plus the dirty flag it had. */
   lists: Map<string, { restore: () => void; dirty: boolean }>;
+}
+
+/** Settings as last saved (empty if none or storage is unavailable). */
+export function savedSettings(): Partial<Settings> {
+  try {
+    const s = localStorage.getItem('hlb-settings') ?? localStorage.getItem('hv-settings');
+    return s ? JSON.parse(s) : {};
+  } catch {
+    return {};
+  }
 }
 
 const descCache = new WeakMap<D2Item, ItemDescription>();
@@ -175,12 +187,7 @@ export class Store {
 
   constructor(platform: Platform) {
     this.platform = platform;
-    try {
-      const s = localStorage.getItem('hlb-settings') ?? localStorage.getItem('hv-settings');
-      if (s) this.settings = { ...this.settings, ...JSON.parse(s) };
-    } catch {
-      /* storage unavailable */
-    }
+    this.settings = { ...this.settings, ...savedSettings() };
   }
 
   subscribe = (fn: () => void) => {
@@ -331,6 +338,7 @@ export class Store {
     try {
       this.folder = folder;
       this.files = await this.platform.listSaves(folder);
+      if (this.platform.id === 'tauri' && this.settings.lastFolder !== folder) this.setSettings({ lastFolder: folder });
       this.docs.clear();
       this.history = [];
       for (const f of this.files) await this.loadFile(f);

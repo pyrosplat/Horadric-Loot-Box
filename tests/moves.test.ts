@@ -604,3 +604,15 @@ describe('startup panes', () => {
     expect(s.panes[0].docId).toBe('t/barbexp_v105.d2s');
   });
 });
+
+describe('remembering the save folder', () => {
+  test('the desktop app records the folder it opened', async () => {
+    const p = { ...fakePlatform(), id: 'tauri' as const };
+    const s = new Store(p);
+    s.toast = () => {};
+    await s.openFolder('t/');
+    expect(s.settings.lastFolder).toBe('t/');
+    // the demo never records one
+    expect(store.settings.lastFolder).toBeUndefined();
+  });
+});

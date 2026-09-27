@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- The app remembers your save folder and reopens it at launch, so you only choose it once (handy on Linux, where saves live inside a Proton/Wine prefix). Settings → "Open a different folder" switches to another one; if the folder has moved, you're asked to choose again.
+
 ## 1.1.1
 
 - On start, the fullest vault opens on the left and your most recently played character on the right.

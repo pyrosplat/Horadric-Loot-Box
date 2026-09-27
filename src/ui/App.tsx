@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GD } from '../core';
 import { availablePlatforms, type Platform } from '../platform';
-import { Store, desc, docLabel, type ItemView } from '../state/store';
+import { Store, desc, docLabel, savedSettings, type ItemView } from '../state/store';
 import { QUALITY_TEXT } from './Tooltip';
 import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale } from './scale';
 import { StoreContext, useStore } from './context';
@@ -13,6 +13,10 @@ import { TooltipProvider } from './Tooltip';
 export function App() {
   const platforms = useMemo(availablePlatforms, []);
   const [store, setStore] = useState<Store | null>(null);
+  // desktop app: reopen the last save folder at launch (only once; "Open a different folder" shows the welcome screen)
+  const last = platforms[0].id === 'tauri' ? savedSettings().lastFolder : undefined;
+  const [autoOpen, setAutoOpen] = useState(!!last);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const start = async (p: Platform, folder?: string | null) => {
     const s = new Store(p);
@@ -22,13 +26,25 @@ export function App() {
     await s.openFolder(f);
   };
 
-  if (!store)
+  useEffect(() => {
+    if (!autoOpen || !last) return;
+    platforms[0]
+      .listSaves(last)
+      .then(() => start(platforms[0], last))
+      .catch(() => setLastError(`Couldn't open ${last} (it may have moved). Choose your save folder.`))
+      .finally(() => setAutoOpen(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!store) {
+    if (autoOpen) return <div className="min-h-screen bg-ink-950" />;
     return (
       <>
-        <Welcome platforms={platforms} onStart={start} />
+        <Welcome platforms={platforms} onStart={start} last={last} note={lastError} />
         <Credit />
       </>
     );
+  }
   return (
     <StoreContext.Provider value={store}>
       <TooltipProvider>
@@ -50,13 +66,17 @@ function Logo() {
   );
 }
 
-function Welcome({ platforms, onStart }: { platforms: Platform[]; onStart: (p: Platform, folder?: string | null) => Promise<void> }) {
+function Welcome({ platforms, onStart, last, note }: { platforms: Platform[]; onStart: (p: Platform, folder?: string | null) => Promise<void>; last?: string; note?: string | null }) {
   const [detected, setDetected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const main = platforms[0];
   const demo = platforms.find((p) => p.id === 'demo');
   useEffect(() => {
-    if (main.id === 'tauri') main.detectSaveFolders().then(setDetected).catch(() => setDetected([]));
+    if (main.id === 'tauri')
+      main
+        .detectSaveFolders()
+        .then((found) => setDetected(last && !note && !found.includes(last) ? [last, ...found] : found))
+        .catch(() => setDetected(last && !note ? [last] : []));
   }, [main]);
   const go = (p: Platform, f?: string | null) => onStart(p, f).catch((e) => setError((e as Error).message));
   return (
@@ -85,7 +105,7 @@ function Welcome({ platforms, onStart }: { platforms: Platform[]; onStart: (p: P
             </button>
           )}
         </div>
-        {error && <p className="mt-3 text-[13px] text-red-300">{error}</p>}
+        {(error ?? note) && <p className="mt-3 text-[13px] text-red-300">{error ?? note}</p>}
         <p className="mt-6 text-[12px] leading-relaxed text-ink-500">
           Close the game before saving. Your saves are backed up and checked before anything is written. They're usually in{' '}
           <span className="font-mono">Saved Games\Diablo II Resurrected</span>.

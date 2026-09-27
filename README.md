@@ -23,7 +23,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 ## Getting started
 
 1. Close Diablo II: Resurrected.
-2. Open Horadric Loot Box. It finds your save folder, or you can choose it.
+2. Open Horadric Loot Box. It finds your save folder, or you can choose it. It reopens the same folder next time.
 3. Drag a character, stash or vault from the sidebar onto the left or right side.
 4. Move items, then click **Save**.
 
