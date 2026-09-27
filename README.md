@@ -9,6 +9,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 - **Two-pane muling:** drag characters, shared stashes or vaults from the sidebar onto either side, then drag items between them.
 - **Equip from anywhere:** onto a character, weapon swap, mercenary or belt.
 - **Unlimited vaults** with search, quality and item-type filters, and sorting.
+- **Item stats and roll ranges:** hover anything in the grail tabs, found or not, to see its stats and ranges; found items show where your roll lands (★ = perfect).
 - **Holy grail tabs** for uniques, sets, runewords, runes and gems. They count your whole account, match the game's Chronicle totals, and highlight runewords you can make.
 - **Stackables and gold:** a Stackables tab laid out like the game's, and gold transfers between characters, stashes and vaults.
 - **Game-style display:** character screen layout, real item tooltips, and item art from your own game files.

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CATEGORIES, GD, ItemFlag, Quality, canMake, collectHeld, countHeld, runeCounts, slots, type CatalogEntry, type CollectionKind, type D2Item, type Held } from '../core';
+import { CATEGORIES, GD, ItemFlag, Quality, canMake, describeTemplate, collectHeld, countHeld, runeCounts, slots, type CatalogEntry, type CollectionKind, type D2Item, type Held } from '../core';
 import { desc } from '../state/store';
 import { endDrag, startDrag, useStore, countFor } from './context';
 import { GlyphIcon, glyphFor } from './glyphs';
@@ -103,6 +103,13 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
   const count = (key: string) => countHeld(have.get(key)?.filter((h) => !h.socketedIn));
   const inItems = (key: string) => countHeld(have.get(key)?.filter((h) => h.socketedIn));
   const makeable = (e: CatalogEntry) => kind === 'runeword' && canMake(e, runesOwned);
+  /** "You have the runes to make it" or "Missing: Ber, Jah". */
+  const runesNote = (e: CatalogEntry) => {
+    const need = new Map<string, number>();
+    for (const r of e.runes ?? []) need.set(r, (need.get(r) ?? 0) + 1);
+    const missing = [...need].filter(([r, n]) => (runesOwned.get(r) ?? 0) < n).map(([r, n]) => `${GD.items[r]?.name.replace(/ Rune$/, '') ?? r}${n > 1 ? ` ×${n - (runesOwned.get(r) ?? 0)}` : ''}`);
+    return missing.length ? `missing runes: ${missing.join(', ')}` : 'you have the runes to make it';
+  };
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
   const visible = all.filter(({ entry: e, key, eth }) => {
@@ -226,6 +233,8 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                   const canCraft = hiMake && makeable(e);
                   const where = summarize(copies);
                   const shownItem = first ?? phantom(kind, e);
+                  // not found yet: describe it from the game tables (stats with their possible ranges)
+                  const template = !found && (kind === 'unique' || kind === 'set' || kind === 'runeword') ? describeTemplate(kind, e.id) : undefined;
                   const color = kind === 'set' ? 'text-q-set' : 'text-q-unique';
                   return (
                     <div
@@ -248,25 +257,21 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                         store.requestDelete(from, [usable]);
                       }}
                       onMouseMove={(ev) =>
-                        shownItem
+                        shownItem || template
                           ? tip.show({
-                              item: shownItem,
+                              item: template ? undefined : shownItem,
+                              desc: template,
                               x: ev.clientX,
                               y: ev.clientY,
                               extra: found
                                 ? `${where}${eth ? ' (ethereal)' : ''} · ${
                                     usable ? 'drag or double-click to move one out of the vault · right-click to delete one' : 'not in this vault: move it from where it is'
                                   }${canCraft ? ' · you have the runes to make another' : ''}`
-                                : `${eth ? 'No ethereal copy' : 'Not found'} on this account yet${canCraft ? ' · you have the runes to make it' : ''}`,
+                                : `${eth ? 'No ethereal copy' : 'Not found'} on this account yet${kind === 'runeword' ? ` · ${runesNote(e)}` : ''}`,
                             })
                           : undefined
                       }
                       onMouseLeave={tip.hide}
-                      title={
-                        !shownItem
-                          ? `${e.name} — ${(e.runes ?? []).map((r) => GD.items[r]?.name.replace(/ Rune$/, '')).join(' + ')}${found ? ` · ${where}` : canCraft ? ' · you have the runes to make it' : ' (missing)'}`
-                          : undefined
-                      }
                       className={`relative flex flex-col items-center rounded-[3px] border px-1 pb-1 pt-1.5 text-center transition ${
                         found
                           ? elsewhere

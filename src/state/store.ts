@@ -344,12 +344,12 @@ export class Store {
           const ca = a.doc as D2Character, cb = b.doc as D2Character;
           return Number(cb.gameVersion === 3) - Number(ca.gameVersion === 3) || cb.level - ca.level;
         });
-      // start with the most recently played character on the left and the fullest vault on the right
+      // start with the fullest vault on the left and the most recently played character on the right
       const modified = new Map(this.files.map((f) => [f.path, f.modified ?? 0]));
       const known = [...modified.values()].some(Boolean);
       const char = known ? [...chars].sort((a, b) => (modified.get(b.path) ?? 0) - (modified.get(a.path) ?? 0))[0] : chars[0];
       const vault = docs.filter((d) => d.doc?.kind === 'vault').sort((a, b) => (b.doc as Vault).entries.length - (a.doc as Vault).entries.length)[0];
-      this.panes = [{ docId: (char ?? stash)?.id, tab: 0 }, { docId: (vault ?? stash)?.id, tab: 0 }];
+      this.panes = [{ docId: (vault ?? stash)?.id, tab: 0 }, { docId: (char ?? stash)?.id, tab: 0 }];
       this.gameRunning = await this.platform.isGameRunning().catch(() => false);
       if (this.files.length === 0) this.toast('info', 'No .d2s or .d2i files found in that folder.');
       if (!this.art) void this.loadArt();
@@ -406,6 +406,12 @@ export class Store {
 
   showInPane(pane: 0 | 1, docId: string, tab = 0) {
     this.panes = pane === 0 ? [{ docId, tab }, this.panes[1]] : [this.panes[0], { docId, tab }];
+    this.emit();
+  }
+
+  /** Swaps what the left and right panes show. */
+  swapPanes() {
+    this.panes = [this.panes[1], this.panes[0]];
     this.emit();
   }
 

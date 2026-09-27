@@ -83,22 +83,26 @@ export interface GemMod {
   max: number;
 }
 
+/** An item property as the game tables list it: property code, parameter, min and max roll. */
+export type PropDef = [code: string, param: string, min: number, max: number];
+
 export interface GameData {
   meta: { source: string; builtAt: string };
   stats: StatDef[];
   types: Record<string, TypeDef>;
   items: Record<string, ItemDef>;
   itemOrder: string[];
-  uniques: Record<string, { name: string; code: string; levelReq: number; disabled?: boolean; carry1?: number; noChronicle?: boolean }>;
-  setItems: Record<string, { name: string; set: string; code: string; levelReq: number; noChronicle?: boolean }>;
-  runewords: { row: number; key: string; name: string; complete: boolean; runes: string[]; itypes: string[] }[];
+  uniques: Record<string, { name: string; code: string; levelReq: number; disabled?: boolean; carry1?: number; noChronicle?: boolean; props: PropDef[] }>;
+  setItems: Record<string, { name: string; set: string; setKey: string; code: string; levelReq: number; noChronicle?: boolean; props: PropDef[]; partial: [number, PropDef[]][] }>;
+  sets: Record<string, { name: string; partial: [number, PropDef[]][]; full: PropDef[] }>;
+  runewords: { row: number; key: string; name: string; complete: boolean; runes: string[]; itypes: string[]; props: PropDef[] }[];
   magicPrefix: (string | null)[];
   magicSuffix: (string | null)[];
   magicPrefixReq: number[];
   magicSuffixReq: number[];
   rareNames: (string | null)[];
   classes: { name: string; allSkills: string; tabs: string[]; classOnly: string }[];
-  skills: Record<string, { name: string; cls: number }>;
+  skills: Record<string, { key: string; name: string; cls: number }>;
   /** hireling.txt by Id: class, act, difficulty hired in, experience factor, skills, index into mercNames. */
   mercs: Record<string, { cls: string; act: number; diff: number; expPerLvl: number; skills: string[]; names: number }>;
   mercNames: string[][];

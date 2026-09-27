@@ -150,6 +150,12 @@ for (const [file, kind] of [['weapons', 'weapon'], ['armor', 'armor'], ['misc', 
   }
 }
 
+// ---------- item property lists: [code, param, min, max] (for tooltips of items not found yet, and roll ranges) ----------
+const propList = (r, code, param, min, max, n) =>
+  Array.from({ length: n }, (_, i) => i + 1)
+    .map((i) => [r[code(i)], r[param(i)] ?? '', int(r[min(i)]), int(r[max(i)])])
+    .filter(([c]) => c && !c.startsWith('*'));
+
 // ---------- uniques / sets ----------
 // Unique/set IDs: row index with the 'Expansion' separator rows skipped (matches the '*ID' comment column).
 const uniques = {};
@@ -166,6 +172,7 @@ for (const r of readTsv('uniqueitems')) {
     carry1: int(r.carry1) || undefined,
     // the in-game Chronicle (RotW's grail) leaves these out: legacy, duplicate or unobtainable rows
     noChronicle: r.disableChronicle === '1' || undefined,
+    props: propList(r, (i) => `prop${i}`, (i) => `par${i}`, (i) => `min${i}`, (i) => `max${i}`, 12),
   };
 }
 const setItems = {};
@@ -174,7 +181,30 @@ for (const r of readTsv('setitems')) {
   if (r.index === 'Expansion') continue;
   const id = setId++;
   if (r['*ID'] !== '' && int(r['*ID']) !== id) console.warn(`setitems: row ${r.index} *ID ${r['*ID']} != ${id}`);
-  setItems[id] = { name: str(r.index, r.index), set: str(r.set, r.set), code: r.item, levelReq: int(r['lvl req']), noChronicle: r.disableChronicle === '1' || undefined };
+  setItems[id] = {
+    name: str(r.index, r.index),
+    set: str(r.set, r.set),
+    setKey: r.set,
+    code: r.item,
+    levelReq: int(r['lvl req']),
+    noChronicle: r.disableChronicle === '1' || undefined,
+    props: propList(r, (i) => `prop${i}`, (i) => `par${i}`, (i) => `min${i}`, (i) => `max${i}`, 9),
+    // bonuses this item gets while more pieces of its set are worn: [items worn, props]
+    partial: [1, 2, 3, 4, 5]
+      .map((n) => [n + 1, ['a', 'b'].flatMap((x) => propList(r, () => `aprop${n}${x}`, () => `apar${n}${x}`, () => `amin${n}${x}`, () => `amax${n}${x}`, 1))])
+      .filter(([, p]) => p.length),
+  };
+}
+const sets = {};
+for (const r of readTsv('sets')) {
+  if (!r.index || r.index === 'Expansion') continue;
+  sets[r.index] = {
+    name: str(r.name, r.index),
+    partial: [2, 3, 4, 5]
+      .map((n) => [n, ['a', 'b'].flatMap((x) => propList(r, () => `PCode${n}${x}`, () => `PParam${n}${x}`, () => `PMin${n}${x}`, () => `PMax${n}${x}`, 1))])
+      .filter(([, p]) => p.length),
+    full: propList(r, (i) => `FCode${i}`, (i) => `FParam${i}`, (i) => `FMin${i}`, (i) => `FMax${i}`, 8),
+  };
 }
 
 // ---------- runewords ----------
@@ -185,6 +215,7 @@ const runewords = readTsv('runes').map((r, row) => ({
   complete: r.complete === '1',
   runes: ['Rune1', 'Rune2', 'Rune3', 'Rune4', 'Rune5', 'Rune6'].map((c) => r[c]).filter(Boolean),
   itypes: ['itype1', 'itype2', 'itype3', 'itype4', 'itype5', 'itype6'].map((c) => r[c]).filter(Boolean),
+  props: propList(r, (i) => `T1Code${i}`, (i) => `T1Param${i}`, (i) => `T1Min${i}`, (i) => `T1Max${i}`, 7),
 }));
 
 // ---------- affixes ----------
@@ -218,6 +249,7 @@ for (const r of readTsv('skills')) {
   if (id < 0) continue;
   const desc = skillDescRows[r.skilldesc];
   skills[id] = {
+    key: r.skill,
     name: desc ? str(desc['str name'], r.skill) : r.skill,
     cls: r.charclass ? classCodes.indexOf(r.charclass) : -1,
   };
@@ -287,6 +319,7 @@ const data = {
   itemOrder,
   uniques,
   setItems,
+  sets,
   runewords,
   magicPrefix,
   magicSuffix,

@@ -207,3 +207,35 @@ describe('item types', () => {
     expect(itemTypeOf(Object.entries(GD.items).find(([, d]) => d.type === 'lcha')![0])).toBe('Grand Charms');
   });
 });
+
+describe('item stats from the game tables', () => {
+  const find = (tbl: Record<string, { name: string }>, n: string) => Number(Object.entries(tbl).find(([, v]) => v.name === n)![0]);
+  test('uniques, sets and runewords not found yet show their stats with ranges', async () => {
+    const { GD, describeTemplate } = await import('../src/core');
+    const mods = (d: ReturnType<typeof describeTemplate>) => d!.lines.filter((l) => l.kind === 'mod').map((l) => l.text);
+    const shako = mods(describeTemplate('unique', find(GD.uniques, 'Harlequin Crest')));
+    expect(shako).toContain('+2 to All Skills');
+    expect(shako).toContain('50% Better Chance of Getting Magic Items');
+    const griffon = mods(describeTemplate('unique', find(GD.uniques, "Griffon's Eye")));
+    expect(griffon).toContain('+(10–15)% to Lightning Skill Damage');
+    expect(griffon).toContain('-(15–20)% to Enemy Lightning Resistance');
+    const enigma = describeTemplate('runeword', GD.runewords.find((r) => r.name === 'Enigma' && r.complete)!.row)!;
+    expect(enigma.lines.map((l) => l.text)).toContain("'JahIthBer'");
+    expect(mods(enigma)).toEqual(expect.arrayContaining(['+1 to Teleport', '+(750–775) Defense', 'Physical Damage Received Reduced by 8%']));
+    const cta = mods(describeTemplate('runeword', GD.runewords.find((r) => r.name === 'Call to Arms')!.row));
+    expect(cta).toContain('+(1–6) to Battle Orders');
+    const tal = describeTemplate('set', find(GD.setItems, "Tal Rasha's Guardianship"))!;
+    expect(tal.lines.filter((l) => l.kind === 'setbonus').map((l) => l.text)).toContain('+3 to Sorceress Skill Levels (full set)');
+  });
+  test('found items show where each roll lands', () => {
+    const ch = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/ChaosSC.d2s')));
+    const insight = ch.items.map((i) => describeItem(i)).find((d) => d.name === 'Insight' || d.name.endsWith(' Insight'));
+    const all = [...ch.items, ...ch.mercItems].map((i) => describeItem(i));
+    const d = insight ?? all.find((x) => x.name === 'Insight')!;
+    const ed = d.lines.find((l) => /Enhanced Damage/.test(l.text))!;
+    expect(ed.range).toBe('200–260');
+    expect(ed.perfect).toBe(Number(/\d+/.exec(ed.text)![0]) === 260);
+    // fixed stats get no range
+    expect(d.lines.find((l) => /Faster Cast Rate/.test(l.text))!.range).toBeUndefined();
+  });
+});

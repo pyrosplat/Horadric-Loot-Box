@@ -200,9 +200,16 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
       )}
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="flex min-w-0 flex-1 gap-3 overflow-hidden p-3">
+        <main className="relative flex min-w-0 flex-1 gap-3 overflow-hidden p-3 pb-10">
           <Pane pane={0} />
           <Pane pane={1} />
+          <button
+            onClick={() => store.swapPanes()}
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-ink-600 bg-ink-900 px-3 py-1 text-[12px] text-ink-300 shadow-tip hover:border-gold-500 hover:text-gold-300"
+            title="Switch the left and right sides"
+          >
+            ⇄ Switch sides
+          </button>
         </main>
       </div>
       <Toasts />

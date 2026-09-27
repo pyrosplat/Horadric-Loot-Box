@@ -1,4 +1,4 @@
-import { GD, isType, statByName, statDef } from './gamedata';
+import { GD, isType, statByName, statDef, type PropDef } from './gamedata';
 import { Quality, type D2Item, type ItemStat } from './item';
 
 export type QualityClass =
@@ -7,6 +7,10 @@ export type QualityClass =
 export interface DescLine {
   text: string;
   kind: 'base' | 'req' | 'mod' | 'setbonus' | 'socket' | 'info' | 'flag';
+  /** On found uniques, set items and runewords: the possible roll, e.g. "20–30". */
+  range?: string;
+  /** The roll is the best possible. */
+  perfect?: boolean;
 }
 
 export interface ItemDescription {
@@ -266,23 +270,135 @@ function magicName(item: D2Item, base: string) {
 
 // ---------------------------------------------------------------- socket contributions
 
-function propStats(code: string, min: number, max: number, param: string): ItemStat[] {
-  const out: ItemStat[] = [];
-  const mk = (key: string, value = min, withParam = true) => {
-    const d = statByName(key);
-    if (d) out.push({ id: d.id, param: withParam ? Number(param) || 0 : 0, value: value * 2 ** d.valShift });
-  };
-  for (const f of GD.properties[code] ?? []) {
-    if (f.stat && f.func === 15) mk(f.stat, min, false);
-    else if (f.stat && f.func === 16) mk(f.stat, max, false);
-    else if (f.stat && f.func === 17) mk(f.stat, Number(param) || 0, false);
-    else if (f.stat && [1, 2, 3, 8].includes(f.func)) mk(f.stat);
-    else if (f.func === 5) mk('mindamage');
-    else if (f.func === 6) mk('maxdamage');
-    else if (f.func === 7) (mk('item_maxdamage_percent'), mk('item_mindamage_percent'));
-    else if (f.func === 20) mk('item_indesctructible');
+let skillIds: Map<string, number> | undefined;
+/** A skill parameter from the tables: an id, an internal name ("Teleport") or a display name. */
+function skillId(param: string): number {
+  if (/^\d+$/.test(param)) return Number(param);
+  if (!skillIds) {
+    skillIds = new Map();
+    for (const [id, sk] of Object.entries(GD.skills)) {
+      skillIds.set(sk.key.toLowerCase(), Number(id));
+      if (!skillIds.has(sk.name.toLowerCase())) skillIds.set(sk.name.toLowerCase(), Number(id));
+    }
   }
+  return skillIds.get(param.toLowerCase()) ?? 0;
+}
+
+const propDefs = (code: string) => GD.properties[code] ?? GD.properties[code.toLowerCase()] ?? Object.entries(GD.properties).find(([k]) => k.toLowerCase() === code.toLowerCase())?.[1] ?? [];
+
+/**
+ * The stats one table property gives when it rolls `v` (between its min and max). Properties with no stat
+ * line of their own (sockets, random skills, ethereal) come back as `text`.
+ */
+function propStatsAt(code: string, param: string, min: number, max: number, v: number): { stats: ItemStat[]; text?: string } {
+  const stats: ItemStat[] = [];
+  let text: string | undefined;
+  const mk = (key: string | undefined, value: number, p = 0) => {
+    const d = key ? statByName(key) : undefined;
+    if (d) stats.push({ id: d.id, param: p, value: value * 2 ** d.valShift });
+  };
+  const num = Number(param) || 0;
+  for (const f of propDefs(code)) {
+    switch (f.func) {
+      case 1: case 2: case 3: case 8: mk(f.stat, v, num); break;
+      case 5: mk('mindamage', v); break;
+      case 6: mk('maxdamage', v); break;
+      case 7: mk('item_maxdamage_percent', v); mk('item_mindamage_percent', v); break;
+      case 10: mk(f.stat, v, num); break;
+      case 11: mk(f.stat, min, (skillId(param) << 6) | (max & 63)); break; // chance to cast: min = chance, max = level
+      case 12: text = `+${num} to a Random Skill`; break;
+      case 14: text = sprintf(GD.ui.Socketable ?? 'Socketed (%i)', num || v); break;
+      case 15: mk(f.stat, min); break;
+      case 16: mk(f.stat, max); break;
+      case 17: mk(f.stat, num); break;
+      case 19: mk(f.stat, min | (min << 8), (skillId(param) << 6) | (max & 63)); break; // charges, level
+      case 20: mk('item_indesctructible', 1); break;
+      case 21: mk(f.stat, v, Number(f.val) || 0); break;
+      case 22: mk(f.stat, v, skillId(param)); break;
+      case 23: text = GD.ui.strethereal ?? 'Ethereal (Cannot be Repaired)'; break;
+      case 36: text = `+${Number(f.val) || num || 1} to a Random Class's Skill Levels`; break; // min/max pick the class
+    }
+  }
+  return { stats, text };
+}
+
+function propStats(code: string, min: number, max: number, param: string): ItemStat[] {
+  return propStatsAt(code, param, min, max, min).stats;
+}
+
+/** A property line from the tables at its lowest and highest roll, plus the merged text ("+(20–30)% …"). */
+export interface RangeLine {
+  text: string;
+  lo: string;
+  hi: string;
+}
+
+const NUM = /(\d+(?:\.\d+)?)/;
+const skeleton = (t: string) => t.replace(/\d+(?:\.\d+)?/g, '#');
+
+/** "+20% Faster Cast Rate" and "+30% Faster Cast Rate" → "+(20–30)% Faster Cast Rate". */
+function mergeRange(lo: string, hi: string): string {
+  if (lo === hi) return lo;
+  const a = lo.split(NUM), b = hi.split(NUM);
+  if (a.length !== b.length || skeleton(lo) !== skeleton(hi)) return `${lo} to ${hi}`;
+  return a.map((x, i) => (i % 2 && x !== b[i] ? `(${x}–${b[i]})` : x)).join('');
+}
+
+/** Tooltip lines for a list of table properties, with ranges; `fixed` stats (e.g. socketed runes) are added to both ends. */
+export function propLines(props: PropDef[], fixed: ItemStat[] = []): RangeLine[] {
+  const at = (pick: 'min' | 'max') => {
+    const stats: ItemStat[] = [...fixed];
+    const texts: string[] = [];
+    for (const [code, param, min, max] of props) {
+      const r = propStatsAt(code, param, min, max, pick === 'min' ? Math.min(min, max) : Math.max(min, max));
+      stats.push(...r.stats);
+      if (r.text) texts.push(r.text);
+    }
+    return [...describeStats(stats), ...texts];
+  };
+  const lo = at('min'), hi = at('max');
+  const out: RangeLine[] = [];
+  const used = new Set<number>();
+  lo.forEach((l, i) => {
+    let j = i < hi.length && !used.has(i) && skeleton(hi[i]) === skeleton(l) ? i : hi.findIndex((h, k) => !used.has(k) && skeleton(h) === skeleton(l));
+    if (j < 0) j = i < hi.length && !used.has(i) ? i : -1;
+    const h = j >= 0 ? hi[j] : l;
+    if (j >= 0) used.add(j);
+    out.push({ text: mergeRange(l, h), lo: l, hi: h });
+  });
   return out;
+}
+
+/** Adds the possible roll to each line of a found item that has one ("+25% Faster Cast Rate" gets "20–30"). */
+function annotateRanges(lines: DescLine[], ranges: RangeLine[]) {
+  const open = ranges.filter((r) => r.lo !== r.hi);
+  for (const l of lines) {
+    if (l.kind !== 'mod') continue;
+    const i = open.findIndex((r) => skeleton(r.lo) === skeleton(l.text));
+    if (i < 0) continue;
+    const [r] = open.splice(i, 1);
+    const lo = r.lo.split(NUM), hi = r.hi.split(NUM), got = l.text.split(NUM);
+    const parts: string[] = [];
+    let perfect = true;
+    for (let k = 1; k < lo.length; k += 2) {
+      if (lo[k] === hi[k]) continue;
+      parts.push(`${lo[k]}–${hi[k]}`);
+      if (Number(got[k]) !== Number(hi[k])) perfect = false;
+    }
+    if (parts.length) Object.assign(l, { range: parts.join(', '), perfect });
+  }
+}
+
+/** Which socket bonus a runeword's runes give, from the item types it can be made in. */
+function slotForTypes(itypes: string[]): 'weapon' | 'helm' | 'shield' {
+  const all = new Set(itypes.flatMap((t) => GD.types[t]?.all ?? [t]));
+  if (all.has('weap')) return 'weapon';
+  if (all.has('shld') && !all.has('tors') && !all.has('helm')) return 'shield';
+  return 'helm';
+}
+
+function runeSocketStats(runes: string[], slot: 'weapon' | 'helm' | 'shield'): ItemStat[] {
+  return runes.flatMap((r) => (GD.gems[r]?.[slot] ?? []).flatMap((m) => propStats(m.code, m.min, m.max, m.param)));
 }
 
 function socketSlot(parent: D2Item): 'weapon' | 'helm' | 'shield' {
@@ -368,7 +484,14 @@ export function describeItem(item: D2Item): ItemDescription {
     for (const t of gemBonusLines(item)) lines.push({ text: t, kind: 'mod' });
     lines.push({ text: GD.ui.ExInsertSockets ?? 'Can be Inserted into Socketed Items', kind: 'info' });
   } else {
-    for (const t of describeStats(statsAll)) lines.push({ text: t, kind: 'mod' });
+    const mods: DescLine[] = describeStats(statsAll).map((t) => ({ text: t, kind: 'mod' }));
+    const template =
+      qc === 'unique' ? { props: GD.uniques[item.uniqueId ?? -1]?.props, fixed: [] as ItemStat[] }
+      : qc === 'set' ? { props: GD.setItems[item.setId ?? -1]?.props, fixed: [] as ItemStat[] }
+      : qc === 'runeword' ? { props: runewordFor(item)?.props, fixed: item.sockets.flatMap((s) => socketStats(item, s)) }
+      : undefined;
+    if (template?.props) annotateRanges(mods, propLines(template.props, template.fixed));
+    lines.push(...mods);
   }
   if (item.ethereal && item.socketed)
     lines.push({ text: sprintf(GD.ui.strItemModEtherealSocketed ?? 'Ethereal (Cannot be Repaired), Socketed (%i)', item.socketCount), kind: 'flag' });
@@ -380,8 +503,8 @@ export function describeItem(item: D2Item): ItemDescription {
     for (const t of describeStats(list)) lines.push({ text: `${t} (${i + 2} items)`, kind: 'setbonus' });
   });
   if (qc === 'set') {
-    const set = GD.setItems[item.setId ?? -1]?.set;
-    if (set) lines.push({ text: set, kind: 'info' });
+    const si = GD.setItems[item.setId ?? -1];
+    if (si) lines.push(...setLines(si.setKey, si.set));
   }
 
   for (const s of item.sockets) lines.push({ text: `Socketed: ${itemName(s)}`, kind: 'socket' });
@@ -419,4 +542,59 @@ function shortLabel(item: D2Item, name: string): string {
   }
   const words = name.replace(/^The /, '').split(/\s+/);
   return words.length > 2 ? `${words[0]} ${words[1]}` : name;
+}
+
+// ---------------------------------------------------------------- items not found yet
+
+/** The set's name and the bonuses the whole set gives (partial and full), as set-bonus lines. */
+function setLines(key: string, fallbackName: string): DescLine[] {
+  const set = GD.sets[key];
+  const out: DescLine[] = [{ text: set?.name ?? fallbackName, kind: 'info' }];
+  if (set) {
+    for (const [n, props] of set.partial) for (const l of propLines(props)) out.push({ text: `${l.text} (${n} items)`, kind: 'setbonus' });
+    for (const l of propLines(set.full)) out.push({ text: `${l.text} (full set)`, kind: 'setbonus' });
+  }
+  return out;
+}
+
+/**
+ * Tooltip for a unique, set item or runeword from the game tables alone (for collection slots with no copy):
+ * base, requirements and every property with its possible range.
+ */
+export function describeTemplate(kind: 'unique' | 'set' | 'runeword', id: number): ItemDescription | undefined {
+  const lines: DescLine[] = [];
+  const mod = (t: string) => lines.push({ text: t, kind: 'mod' });
+  let name: string, baseName: string, requiredLevel: number, qc: QualityClass;
+  if (kind === 'runeword') {
+    const rw = GD.runewords.find((r) => r.row === id);
+    if (!rw) return undefined;
+    name = rw.name;
+    qc = 'runeword';
+    const runeNames = rw.runes.map((r) => GD.items[r]?.name.replace(/ Rune$/, '') ?? r);
+    baseName = rw.itypes.map((t) => GD.types[t]?.name ?? t).join(', ');
+    requiredLevel = Math.max(0, ...rw.runes.map((r) => GD.items[r]?.levelReq ?? 0));
+    lines.push({ text: `'${runeNames.join('')}'`, kind: 'base' });
+    lines.push({ text: `${baseName} · ${rw.runes.length} sockets`, kind: 'base' });
+    if (requiredLevel > 1) lines.push({ text: sprintf(GD.ui.ItemStats1p ?? 'Required Level: %d', requiredLevel), kind: 'req' });
+    const slot = slotForTypes(rw.itypes);
+    for (const l of propLines(rw.props, runeSocketStats(rw.runes, slot))) mod(l.text);
+    if (new Set(rw.itypes.map((t) => slotForTypes([t]))).size > 1)
+      lines.push({ text: `Rune bonuses shown for ${slot === 'weapon' ? 'weapons' : slot === 'shield' ? 'shields' : 'armor'}; they differ in other bases`, kind: 'info' });
+  } else {
+    const row = kind === 'unique' ? GD.uniques[id] : GD.setItems[id];
+    if (!row) return undefined;
+    name = row.name;
+    qc = kind;
+    baseName = GD.items[row.code]?.name ?? row.code;
+    requiredLevel = Math.max(row.levelReq, GD.items[row.code]?.levelReq ?? 0);
+    lines.push({ text: baseName, kind: 'base' });
+    if (requiredLevel > 1) lines.push({ text: sprintf(GD.ui.ItemStats1p ?? 'Required Level: %d', requiredLevel), kind: 'req' });
+    for (const l of propLines(row.props)) mod(l.text);
+    if (kind === 'set') {
+      const si = GD.setItems[id];
+      for (const [n, props] of si.partial) for (const l of propLines(props)) lines.push({ text: `${l.text} (${n} items)`, kind: 'setbonus' });
+      lines.push(...setLines(si.setKey, si.set));
+    }
+  }
+  return { name, baseName, qualityClass: qc, lines, requiredLevel, short: name, search: [name, baseName, ...lines.map((l) => l.text)].join('\n').toLowerCase() };
 }

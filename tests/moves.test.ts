@@ -591,14 +591,16 @@ describe('gems collection', () => {
 });
 
 describe('startup panes', () => {
-  test('newest character on the left, fullest vault on the right', async () => {
+  test('fullest vault on the left, newest character on the right; switching sides', async () => {
     const p = fakePlatform();
     const list = p.listSaves;
     p.listSaves = async (f) => (await list(f)).map((e) => ({ ...e, modified: e.name === 'barbexp_v105.d2s' ? 2_000 : 1_000 }));
     const s = new Store(p);
     s.toast = () => {};
     await s.openFolder('t/');
+    expect(s.docs.get(s.panes[0].docId!)?.doc?.kind).toBe('vault');
+    expect(s.panes[1].docId).toBe('t/barbexp_v105.d2s');
+    s.swapPanes();
     expect(s.panes[0].docId).toBe('t/barbexp_v105.d2s');
-    expect(s.docs.get(s.panes[1].docId!)?.doc?.kind).toBe('vault');
   });
 });

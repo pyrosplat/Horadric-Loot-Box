@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+
+- On start, the fullest vault opens on the left and your most recently played character on the right.
+- New **⇄ Switch sides** button under the panes, and clicking a file's Left/Right tag in the sidebar swaps the two sides.
+
+## 1.1.0
+
+- Hover any unique, set item or runeword in the collection tabs, found or not, to see its stats, with the possible range for each roll (e.g. "+(10–15)% to Lightning Skill Damage"). Runewords list their runes, bases and socket count, and which runes you're still missing.
+- Found uniques, set items and runewords show each variable stat's range next to your roll, with a ★ when it's perfect.
+- Set items show the set's partial and full bonuses.
+
 ## 1.0.1
 
 - Backups keep only the last 10 copies of each save file, so the backups folder no longer grows forever (copies kept when you delete a character or vault are never removed).

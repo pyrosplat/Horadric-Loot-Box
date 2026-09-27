@@ -216,9 +216,14 @@ function Row({ d, sub, extra }: { d: LoadedDoc; sub: string; extra?: React.React
       {d.doc && (
         <div className="flex shrink-0 gap-0.5 opacity-60 group-hover:opacity-100">
           {(inLeft || inRight) && (
-            <span className="rounded bg-gold-600/20 px-1 text-[9px] font-semibold uppercase tracking-wider text-gold-300" title={`Open on the ${inLeft && inRight ? 'left and right' : inLeft ? 'left' : 'right'}`}>
+            <button
+              onClick={() => store.swapPanes()}
+              disabled={inLeft && inRight}
+              className="rounded bg-gold-600/20 px-1 text-[9px] font-semibold uppercase tracking-wider text-gold-300 hover:bg-gold-600/40 disabled:cursor-default disabled:hover:bg-gold-600/20"
+              title={inLeft && inRight ? 'Open on both sides' : `Open on the ${inLeft ? 'left' : 'right'}. Click to switch sides`}
+            >
               {inLeft && inRight ? 'L · R' : inLeft ? 'Left' : 'Right'}
-            </span>
+            </button>
           )}
           {extra}
         </div>

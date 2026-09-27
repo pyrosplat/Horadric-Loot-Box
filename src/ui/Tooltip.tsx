@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import type { D2Item, QualityClass } from '../core';
+import type { D2Item, ItemDescription, QualityClass } from '../core';
 import { desc } from '../state/store';
 import { uiZoom } from './scale';
 
@@ -22,7 +22,9 @@ export const QUALITY_TEXT: Record<QualityClass, string> = {
 };
 
 interface TipState {
-  item: D2Item;
+  /** The item to describe, or `desc` for an item that exists only in the game tables (not found yet). */
+  item?: D2Item;
+  desc?: ItemDescription;
   x: number;
   y: number;
   extra?: string;
@@ -48,7 +50,7 @@ export function useTooltip() {
   return c;
 }
 
-function FloatingTip({ item, x, y, extra }: TipState) {
+function FloatingTip({ item, desc: d, x, y, extra }: TipState) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: (x + 16) / uiZoom(), top: (y + 12) / uiZoom() });
   useEffect(() => {
@@ -60,16 +62,16 @@ function FloatingTip({ item, x, y, extra }: TipState) {
     const left = x + 16 + r.width > window.innerWidth - 8 ? Math.max(8, x - r.width - 16) : x + 16;
     const top = Math.min(Math.max(8, y + 12), Math.max(8, window.innerHeight - r.height - 8));
     setPos({ left: left / z, top: top / z });
-  }, [x, y, item]);
+  }, [x, y, item, d]);
   return (
     <div ref={ref} className="pointer-events-none fixed z-50" style={pos}>
-      <ItemCard item={item} extra={extra} />
+      {(item || d) && <ItemCard item={item} desc={d} extra={extra} />}
     </div>
   );
 }
 
-export function ItemCard({ item, extra, className = '' }: { item: D2Item; extra?: string; className?: string }) {
-  const d = desc(item);
+export function ItemCard({ item, desc: given, extra, className = '' }: { item?: D2Item; desc?: ItemDescription; extra?: string; className?: string }) {
+  const d = given ?? desc(item!);
   const color = QUALITY_TEXT[d.qualityClass];
   return (
     <div className={`w-[300px] max-w-[85vw] rounded-md border border-ink-600 bg-ink-950/95 px-4 py-3 text-center text-[13px] leading-snug shadow-tip backdrop-blur ${className}`}>
@@ -96,6 +98,11 @@ export function ItemCard({ item, extra, className = '' }: { item: D2Item; extra?
           }
         >
           {l.text}
+          {l.range && (
+            <span className={`ml-1.5 text-[11px] ${l.perfect ? 'text-gold-300' : 'text-ink-500'}`} title={l.perfect ? 'Perfect roll' : `Possible roll: ${l.range}`}>
+              [{l.range}]{l.perfect ? ' ★' : ''}
+            </span>
+          )}
         </div>
       ))}
       {extra && <div className="mt-2 border-t border-ink-700 pt-2 text-[11px] text-ink-400">{extra}</div>}
