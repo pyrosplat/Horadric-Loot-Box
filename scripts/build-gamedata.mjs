@@ -147,6 +147,8 @@ for (const [file, kind] of [['weapons', 'weapon'], ['armor', 'armor'], ['misc', 
       gemSockets: int(r.gemsockets),
       gemApply: int(r.gemapplytype),
       tier: r.code === r.ultracode ? 3 : r.code === r.ubercode ? 2 : r.normcode ? 1 : 0,
+      // the normal, exceptional and elite versions of this base (crafting recipes accept any of them)
+      tiers: r.normcode ? [r.normcode, r.ubercode, r.ultracode].filter(Boolean) : undefined,
       maxStack: int(r.maxstack) || undefined,
       invfile: r.invfile || undefined,
       beltBoxes: r.type === 'belt' && r.belt !== '' ? beltBoxes[int(r.belt)] : undefined,
@@ -231,6 +233,26 @@ const magicPrefix = prefixRows.map((r) => (r.Name ? str(r.Name, r.Name) : null))
 const magicSuffix = suffixRows.map((r) => (r.Name ? str(r.Name, r.Name) : null));
 const magicPrefixReq = prefixRows.map((r) => int(r.levelreq));
 const magicSuffixReq = suffixRows.map((r) => int(r.levelreq));
+// Full affix rows for building magic, rare and crafted items: what they roll and which bases they can go on.
+const affixRow = (r) => ({
+  name: r.Name ? str(r.Name, r.Name) : '',
+  spawnable: r.spawnable === '1' && int(r.frequency) > 0,
+  rare: r.rare === '1',
+  level: int(r.level),
+  maxLevel: int(r.maxlevel) || undefined,
+  cls: r.classspecific || undefined,
+  group: int(r.group),
+  mods: propList(r, (i) => `mod${i}code`, (i) => `mod${i}param`, (i) => `mod${i}min`, (i) => `mod${i}max`, 3),
+  itypes: [1, 2, 3, 4, 5, 6, 7].map((i) => r[`itype${i}`]).filter(Boolean),
+  etypes: [1, 2, 3, 4, 5].map((i) => r[`etype${i}`]).filter(Boolean),
+});
+const affixes = { prefix: prefixRows.map(affixRow), suffix: suffixRows.map(affixRow) };
+const rareNameTypes = (file) => readTsv(file).map((r) => ({
+  itypes: [1, 2, 3, 4, 5, 6, 7].map((i) => r[`itype${i}`]).filter(Boolean),
+  etypes: [1, 2, 3, 4].map((i) => r[`etype${i}`]).filter(Boolean),
+}));
+// same order as rareNames below
+const rareNameFits = [null, ...rareNameTypes('raresuffix'), ...rareNameTypes('rareprefix')];
 const rareSuffix = readTsv('raresuffix').map((r) => str(r.name, r.name));
 const rarePrefix = readTsv('rareprefix').map((r) => str(r.name, r.name));
 // Rare name ids index a combined table: [none, ...raresuffix, ...rareprefix]
@@ -301,6 +323,21 @@ const automagic = readTsv('automagic').map((r) => ({
   etypes: [1, 2, 3, 4, 5].map((i) => r[`etype${i}`]).filter(Boolean),
 }));
 
+// ---------- crafting recipes (cubemain.txt): the base they take and the mods they always add ----------
+const crafts = readTsv('cubemain')
+  .filter((r) => r.enabled === '1' && /\bcrf\b/.test(r.output) && /->/.test(r.description))
+  .map((r) => {
+    const [first, ...flags] = (r['input 1'] ?? '').replace(/"/g, '').split(',');
+    return {
+      name: r.description.split('->')[1].trim(),
+      input: first,
+      upgraded: flags.includes('upg'),
+      mods: [1, 2, 3, 4, 5]
+        .map((i) => [r[`mod ${i}`], r[`mod ${i} param`] ?? '', int(r[`mod ${i} min`]), int(r[`mod ${i} max`])])
+        .filter((m) => m[0]),
+    };
+  });
+
 // ---------- mercenaries (hireling.txt; the save stores the Id, name index and experience) ----------
 const nameRange = (first, last) => {
   const m1 = /^(.*?)(\d+)$/.exec(first), m2 = /^(.*?)(\d+)$/.exec(last);
@@ -352,6 +389,10 @@ const data = {
   magicPrefixReq,
   magicSuffixReq,
   rareNames,
+  rareNameFits,
+  rarePrefixStart: 1 + rareSuffix.length,
+  affixes,
+  crafts,
   classes,
   classCodes,
   skills,

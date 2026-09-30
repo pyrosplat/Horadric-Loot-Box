@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { buildableTemplates, createBaseItem, createTemplateItem, describeItem, rollSlots, type Rolls } from '../src/core';
-import { askText, readAsk, readListing, readTags, tagErrors } from '../src/trade/listing';
+import { GD, affixRows, buildableTemplates, createAffixItem, createBaseItem, createTemplateItem, describeItem, rollSlots, type Rolls } from '../src/core';
+import { askText, readAsk, readListing, readTags, tagErrors, type ListingItem } from '../src/trade/listing';
+
+type AffixListing = Extract<ListingItem, { affixes: unknown }>;
 
 const TAGS = ['PC', 'Ladder', 'Softcore', 'Reign Of The Warlock', 'Trading For', '1 X Ist Rune', 'in 5 minutes'];
 const idOf = (kind: 'unique' | 'set', name: string) => buildableTemplates(kind).find((t) => t.name === name)!.id;
@@ -135,9 +137,81 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
     expect(r.item).toMatchObject({ kind: 'base', code: 'usk', sockets: 3, defense: 154, superior: { row: 2, values: [14] }, ethereal: false });
   });
 
-  test('magic items and runewords are named as not supported yet', () => {
-    expect(read('celtic-knot-magic').errors.join(' ')).toMatch(/magic or rare item/);
-    expect(read('death-runeword-nonladder').errors).toEqual(['This is a Non Ladder listing. Only Ladder trades are allowed.', "Death is a runeword. Runewords can't be traded yet."]);
+  test('magic items: split into the prefix and suffix they must have, with the values read', () => {
+    const amu = read('amulet-magic');
+    expect(amu.errors).toEqual([]);
+    const name = (a: { side: 'prefix' | 'suffix'; row: number }) => GD.affixes[a.side][a.row].name;
+    expect(amu.item).toMatchObject({ kind: 'magic', code: 'amu' });
+    const it = amu.item as AffixListing;
+    expect(it.affixes.map((a) => `${name(a)}=${a.values}`)).toEqual(['Forbidden=3', 'of the Whale=98']); // +3 Eldritch Skills, +98 Life
+    const gc = read('celtic-knot-magic');
+    expect(gc.errors).toEqual([]);
+    expect(gc.item).toMatchObject({ kind: 'magic', code: 'cm3' }); // "+1 To Combat Skills (Barbarian Only)", not the Paladin's
+    expect(describeItem(createAffixItem('cm3', { quality: 'magic', affixes: (gc.item as typeof it).affixes })).lines.map((l) => l.text)).toEqual(
+      expect.arrayContaining(['+1 to Combat Skills (Barbarian Only)', '+16 to Life']),
+    );
+    // "+31Tolife": OCR glues "To" to the next word
+    const eye = read('eye-grand-charm-magic');
+    expect(eye.errors).toEqual([]);
+    expect((eye.item as AffixListing).affixes.map((a) => `${GD.affixes[a.side][a.row].mods[0][0]}=${a.values}`)).toEqual(['skilltab=1', 'hp=31']);
+    expect(askText(eye.ask ?? [])).toBe('1× Ohm Rune or 1× Vex Rune + 1× Mal Rune');
+    expect(readListing(['1X Ring', 'Reign Of The Warlock - Ladder - PC - Softcore - Magic', '+2ToStrength', 'Trading For', '1 X Ist Rune', 'in 5 minutes']).errors).toEqual([]);
+    // "Make an Offer" has no price to pay
+    const jewel = read('jewel-magic-offer');
+    expect(jewel.item).toMatchObject({ kind: 'magic', code: 'jew' });
+    expect(jewel.errors).toEqual([expect.stringMatching(/asks for offers/)]);
+  });
+
+  test('crafted items are made exactly as listed: the recipe names the item, the Elite tag the base', () => {
+    const lines = (it: AffixListing) => describeItem(createAffixItem(it.code, { quality: 'crafted', affixes: [], exactStats: it.exact })).lines.filter((l) => l.kind === 'mod').map((l) => l.text);
+    const gloves = read('blood-gloves-crafted-nonladder');
+    expect(gloves.errors).toEqual(['This is a Non Ladder listing. Only Ladder trades are allowed.']);
+    expect(gloves.item).toMatchObject({ kind: 'crafted', code: 'uvg', name: 'Blood Gloves (Vampirebone Gloves)' });
+    expect(lines(gloves.item as AffixListing)).toEqual([
+      '+20% Increased Attack Speed', '2% Life stolen per hit', '+10% Chance of Crushing Blow', '+86% Enhanced Defense',
+      '+13 to Dexterity', '+17 to Life', '19% Better Chance of Getting Magic Items',
+    ]);
+    // 7% life stolen is more than the recipe and a ring affix give together: made as listed anyway. The garbled
+    // "+14 To —" is the life every Blood Ring has.
+    const ring = read('blood-ring-crafted');
+    expect(ring.errors).toEqual([]);
+    expect(ring.item).toMatchObject({ kind: 'crafted', code: 'rin', name: 'Blood Ring (Ring)' });
+    expect(lines(ring.item as AffixListing)).toEqual(['+120 to Attack Rating', '6% Mana stolen per hit', '7% Life stolen per hit', '+2 to Strength', '+14 to Life', '+6 Maximum Stamina']);
+    expect(ring.warnings.join(' ')).toMatch(/\+14 to Life/);
+    expect(askText(ring.ask ?? [])).toBe('1× Ohm Rune');
+    // "+2 To Strength" is a stat, not the runeword Strength, and a stray mark before the title is fine
+    const r = readListing(['@ 1X Blood Ring', 'Reign Of The Warlock - Softcore - Ladder - PC', '+2 To Strength', '+14 To Life', '3% Life Stolen Per Hit', 'Trading For', '1X Ohm Rune', 'in 14 seconds']);
+    expect(r.errors).toEqual([]);
+    expect(r.item).toMatchObject({ kind: 'crafted', name: 'Blood Ring (Ring)' });
+  });
+
+  test('a rare item listed with its own tooltip lines reads back to the same stats', () => {
+    const row = (side: 'prefix' | 'suffix', name: string) => affixRows(side, 'rin', 'rare').find((i) => GD.affixes[side][i].name === name)!;
+    const ring = createAffixItem('rin', {
+      quality: 'rare',
+      affixes: [
+        { side: 'prefix', row: row('prefix', 'Garnet'), values: [25] },
+        { side: 'prefix', row: row('prefix', 'Lapis'), values: [14] },
+        { side: 'suffix', row: row('suffix', 'of the Leech'), values: [3] },
+        { side: 'suffix', row: row('suffix', 'of Chance'), values: [12] },
+        { side: 'suffix', row: row('suffix', 'of Shock'), values: [1, 17] }, // one line: "Adds 1-17 Lightning Damage"
+      ],
+    });
+    const lines = describeItem(ring).lines.filter((l) => l.kind === 'mod').map((l) => l.text);
+    const r = readListing(['1 X Ring', 'Reign Of The Warlock - PC - Ladder - Softcore - Rare', ...lines, 'Trading For', '1 X Ist Rune', 'in 5 minutes']);
+    expect(r.errors).toEqual([]);
+    const it = r.item as AffixListing;
+    expect(it.kind).toBe('rare');
+    const back = createAffixItem('rin', { quality: 'rare', affixes: it.affixes });
+    expect(describeItem(back).lines.filter((l) => l.kind === 'mod').map((l) => l.text).sort()).toEqual([...lines].sort());
+    // stats no ring can have are refused
+    expect(readListing(['1 X Ring', 'Reign Of The Warlock - PC - Ladder - Softcore - Rare', '+300% Enhanced Damage', 'Trading For', '1 X Ist Rune', 'in 5 minutes']).errors[0]).toMatch(/No rare Ring can have/);
+  });
+
+  test('runewords are read', () => {
+    const death = read('death-runeword-nonladder');
+    expect(death.errors).toEqual(['This is a Non Ladder listing. Only Ladder trades are allowed.']);
+    expect(death.item).toMatchObject({ kind: 'runeword', name: 'Death', base: 'Berserker Axe', ethereal: true });
   });
 
   test('Non Ladder listings are refused, and still read correctly', () => {
@@ -206,6 +280,9 @@ describe('the price: what the listing is trading for', () => {
     const want: Record<string, string> = {
       'demonhead-superior': '1× Ist Rune', // read as "ox 15 Rune" in the first pass, "1XIstRune" in the price pass
       'celtic-knot-magic': '1× Lem Rune',
+      'amulet-magic': '1× Ist Rune',
+      'call-to-arms-runeword': '1× Ber Rune + 1× Ohm Rune',
+      'blood-gloves-crafted-nonladder': '9× Jah Rune',
       annihilus: '1× Ist Rune',
       'trang-oul-nonladder': '1× Ist Rune',
       'horazon-nonladder': '1× Ist Rune',
@@ -216,6 +293,7 @@ describe('the price: what the listing is trading for', () => {
     // the first pass alone still gets most of them, with digits read as letters ("15 Rune" = "Ist Rune")
     expect(askText(readAsk(['ox 15 Rune']).options)).toBe('');
     expect(askText(readAsk(['1X 15 Rune']).options)).toBe('1× Ist Rune');
+    expect(askText(readAsk(['{& 9X)ah Rune']).options)).toBe('9× Jah Rune');
   });
 
   test('several things together, OR, offers and payments that aren\u2019t runes', () => {
@@ -224,6 +302,14 @@ describe('the price: what the listing is trading for', () => {
     expect(askText(readAsk(['1 X Key of Terror']).options)).toBe('1× Key of Terror');
     expect(readAsk(['Make an Offer']).problems[0]).toMatch(/asks for offers/);
     expect(readAsk(['1 X Annihilus']).problems[0]).toMatch(/Only runes, gems, keys and parts/);
+    // an option that can't be paid is left out when another one can: pay the Pul
+    const pul = readAsk(['1 X Pul Rune OR', '1 X Random Minor Key']);
+    expect([askText(pul.options), pul.problems, pul.skipped]).toEqual(['1× Pul Rune', [], ['1 X Random Minor Key']]);
+    expect(askText(readAsk(['1 X Random Minor Key OR', '1 X Pul Rune']).options)).toBe('1× Pul Rune');
+    const r2 = readListing(['1 X Eye Grand Charm', 'Reign Of The Warlock - Ladder - PC - Softcore', '+1 To Elemental Skills (Druid Only)', 'Trading For', '1 X Pul Rune OR', '1 X Random Minor Key', '1 minute ago']);
+    expect(r2.errors).toEqual([]);
+    expect(askText(r2.ask ?? [])).toBe('1× Pul Rune');
+    expect(r2.warnings.join(' ')).toMatch(/Left out the "1 X Random Minor Key" option/);
     const r = readListing(['1 X Ber Rune', 'Reign Of The Warlock · PC · Ladder · Softcore', 'Trading For', 'Make an Offer', 'in 2 minutes']);
     expect(r.errors[0]).toMatch(/asks for offers/);
   });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GD, createBaseItem, createTemplateItem, type D2Item } from '../core';
+import { GD, createAffixItem, createBaseItem, createRunewordItem, createTemplateItem, type D2Item } from '../core';
 import { useStore } from '../ui/context';
 import { ItemCard, useTooltip } from '../ui/Tooltip';
 import { MAX_LISTING_AGE_DAYS, askText, readListing, type ListingResult } from './listing';
@@ -28,6 +28,14 @@ function build(r: ListingResult): Built {
     if (it.kind === 'rune' || it.kind === 'gem' || it.kind === 'uber') return { item: displayItem(it.code) };
     if (it.kind === 'fullset') return { pieces: it.pieces.map((p) => ({ id: p.id, name: p.name, item: createTemplateItem('set', p.id, p.rolls, { defense: p.defense }) })) };
     if (it.kind === 'unique' || it.kind === 'set') return { item: createTemplateItem(it.kind, it.id, it.rolls, { ethereal: it.ethereal, defense: it.defense }) };
+    if (it.kind === 'runeword') {
+      const d = GD.items[it.code];
+      // the base's own defense isn't on the listing: a random roll in its range, like any roll it doesn't show
+      const defense = d?.minAc !== undefined && d.maxAc !== undefined ? d.minAc + Math.floor(Math.random() * (d.maxAc - d.minAc + 1)) : undefined;
+      return { item: createRunewordItem(it.row, it.code, it.rolls, { ethereal: it.ethereal, defense }) };
+    }
+    if (it.kind === 'magic' || it.kind === 'rare' || it.kind === 'crafted')
+      return { item: createAffixItem(it.code, { quality: it.kind, affixes: it.affixes, craft: it.craft, auto: it.auto, sockets: it.sockets, ethereal: it.ethereal, defense: it.defense, exactStats: it.exact }) };
     if (it.kind !== 'base') return {};
     return { item: createBaseItem(it.code, { sockets: it.sockets, defense: it.defense, ethereal: it.ethereal, superior: it.superior, auto: it.auto, skills: it.skills }) };
   } catch (e) {
@@ -39,6 +47,8 @@ function build(r: ListingResult): Built {
 function itemLabel(it: NonNullable<ListingResult['item']>): string {
   if (it.kind === 'base') return `${it.ethereal ? 'Ethereal ' : ''}${it.superior ? 'Superior ' : ''}${it.name}${it.sockets ? ` (${it.sockets} sockets)` : ''}`;
   if (it.kind === 'unique' || it.kind === 'set') return `${it.ethereal ? 'Ethereal ' : ''}${it.name}`;
+  if (it.kind === 'runeword') return `${it.name} (${it.ethereal ? 'Ethereal ' : ''}${it.base})`;
+  if (it.kind === 'magic' || it.kind === 'rare' || it.kind === 'crafted') return `${it.ethereal ? 'Ethereal ' : ''}${it.name}${it.sockets ? ` (${it.sockets} sockets)` : ''}`;
   return it.name;
 }
 
@@ -124,8 +134,8 @@ export function ScreenshotImport() {
     const items =
       it.kind === 'fullset'
         ? (state.pieces ?? []).map((p) => ({ kind: 'set' as const, id: p.id, name: p.name, item: p.item }))
-        : state.item && (it.kind === 'base' || it.kind === 'unique' || it.kind === 'set')
-          ? [{ kind: it.kind, id: it.kind === 'base' ? GD.items[it.code].index : it.id, name: itemLabel(it), item: state.item }]
+        : state.item && it.kind !== 'rune' && it.kind !== 'gem' && it.kind !== 'uber'
+          ? [{ kind: it.kind, id: 'id' in it ? it.id : it.kind === 'runeword' ? it.row : GD.items[it.code].index, name: itemLabel(it), item: state.item }]
           : [];
     const want: [string, number][] = it.kind === 'rune' || it.kind === 'gem' || it.kind === 'uber' ? [[it.code, it.quantity]] : [];
     const replacing = store.trade.listing;

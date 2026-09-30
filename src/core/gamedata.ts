@@ -57,6 +57,8 @@ export interface ItemDef {
   gemSockets: number;
   gemApply: number;
   tier: number;
+  /** Weapons and armor: the normal, exceptional and elite codes of this base. */
+  tiers?: string[];
   maxStack?: number;
   invfile?: string;
   /** Belts only: how many potion slots it gives (4, 8, 12 or 16). */
@@ -90,6 +92,22 @@ export interface GemMod {
 /** An item property as the game tables list it: property code, parameter, min and max roll. */
 export type PropDef = [code: string, param: string, min: number, max: number];
 
+/** One magic prefix or suffix row. `spawnable` is false for rows that never roll (frequency 0, disabled). */
+export interface AffixDef {
+  name: string;
+  spawnable: boolean;
+  /** Can roll on rare and crafted items too. */
+  rare: boolean;
+  level: number;
+  maxLevel?: number;
+  /** Class code for class-only affixes ("+3 to Eldritch Skills" on amulets). */
+  cls?: string;
+  group: number;
+  mods: PropDef[];
+  itypes: string[];
+  etypes: string[];
+}
+
 export interface GameData {
   meta: { source: string; builtAt: string };
   stats: StatDef[];
@@ -105,6 +123,14 @@ export interface GameData {
   magicPrefixReq: number[];
   magicSuffixReq: number[];
   rareNames: (string | null)[];
+  /** Which item types each rare name part (same index as rareNames) can go on. */
+  /** rareNames is [none, ...raresuffix, ...rareprefix]: the index where the prefixes ("Beast", "Eagle") start. */
+  rarePrefixStart: number;
+  rareNameFits: ({ itypes: string[]; etypes: string[] } | null)[];
+  /** magicprefix.txt / magicsuffix.txt rows in full (the save's affix id is the row). */
+  affixes: { prefix: AffixDef[]; suffix: AffixDef[] };
+  /** Crafting recipes: the item they're named for ("Blood Gloves"), the base code or type they take (any tier when `upgraded`), and the mods they add. */
+  crafts: { name: string; input: string; upgraded: boolean; mods: PropDef[] }[];
   classes: { name: string; allSkills: string; tabs: string[]; classOnly: string }[];
   skills: Record<string, { key: string; name: string; cls: number; page: number; reqLevel: number }>;
   /** playerclass.txt codes by class index ('ama', 'sor', … 'war'). */

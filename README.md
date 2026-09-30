@@ -6,20 +6,32 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 
 ## Features
 
-- **Two-pane muling:** drag characters, shared stashes or vaults from the sidebar onto either side, then drag items between them.
-- **Equip from anywhere:** onto a character, weapon swap, mercenary or belt.
-- **Unlimited vaults** with search, quality and item-type filters, and sorting.
-- **Item stats and roll ranges:** hover anything in the grail tabs, found or not, to see its stats and ranges; found items show where your roll lands (★ = perfect).
-- **Holy grail tabs** for uniques, sets, runewords, runes and gems. They count your whole account, match the game's Chronicle totals, and highlight runewords you can make.
-- **Stackables and gold:** a Stackables tab laid out like the game's, and gold transfers between characters, stashes and vaults.
-- **Game-style display:** character screen layout, real item tooltips, and item art from your own game files.
-- **Trade (optional, off by default):** paste a Traderie screenshot to trade for that item at the listing's price. It's read on your computer and checked (PC, Ladder, RotW, Softcore/Hardcore, posted in the last 3 days). Turn it on in Settings → Trade.
-- **Automatic updates** from GitHub releases (asks before installing).
-- **Safe saving:** backups before every change, each save checked before it's written, no saving while the game runs, and hardcore/softcore and editions never mix.
+- **Two-pane muling:** drag characters, shared stashes or vaults onto either side, then drag items between them.
+- **Equip from anywhere:** onto a character, weapon swap, mercenary or belt, with real item tooltips and art from your own game files.
+- **Unlimited vaults** with search, filters and sorting.
+- **Holy grail tabs** for uniques, sets, runewords, runes and gems, counted across your whole account (matches the game's Chronicle).
+- **Stats and roll ranges** on every item, found or not (★ = perfect roll).
+- **Stackables and gold** moved between characters, stashes and vaults.
+- **Offline trading** from Traderie screenshots (see below).
+- **Safe saving:** a backup before every save, each save checked before it's written, no saving while the game runs, and Softcore/Hardcore never mix.
+- **Automatic updates** from GitHub releases.
 
 | Uniques | Runewords | Stackables |
 | --- | --- | --- |
 | ![Uniques collection](docs/screenshots/uniques.png) | ![Runewords collection](docs/screenshots/runewords.png) | ![Stackables tab](docs/screenshots/stackables.png) |
+
+## Offline trading
+
+Trade in single player for items listed on Traderie, at the listing's price. Turn it on in **Settings → Trade**, then click **Trade**.
+
+[![Offline trading demo (click to play)](docs/screenshots/trade.png)](docs/videos/trade.mp4)
+
+1. Paste (Ctrl+V) or drop a Traderie screenshot. It's read on your computer; nothing is uploaded.
+2. The listing must be PC, Ladder, Reign of the Warlock, posted in the last 3 days, and match your Softcore/Hardcore file.
+3. Drag the runes, gems or keys it asks for into **Your offer**, then **Accept trade**.
+4. Drag what you got from **Received** into a stash, character or vault, and save.
+
+Works with uniques, set items (and full sets), runewords, magic, rare and crafted items, bases, runes, gems, keys and uber parts. Every roll is checked against the item's real range; rolls the listing doesn't show are random.
 
 ## Getting started
 

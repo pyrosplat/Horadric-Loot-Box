@@ -308,13 +308,15 @@ export function propStatsAt(code: string, param: string, min: number, max: numbe
       case 5: mk('mindamage', v); mk('secondary_mindamage', v); mk('item_throw_mindamage', v); break; // the game sets all three
       case 6: mk('maxdamage', v); mk('secondary_maxdamage', v); mk('item_throw_maxdamage', v); break;
       case 7: mk('item_maxdamage_percent', v); mk('item_mindamage_percent', v); break;
-      case 10: mk(f.stat, v, num); break;
+      case 10: mk(f.stat, v, Math.floor(num / 3) * 8 + (num % 3)); break; // skill tab: the table has class*3+tab, the item class*8+tab
       case 11: mk(f.stat, min, (skillId(param) << 6) | (max & 63)); break; // chance to cast: min = chance, max = level
       case 12: text = `+${num} to a Random Skill`; break;
       case 14: text = sprintf(GD.ui.Socketable ?? 'Socketed (%i)', num || v); break;
       case 15: mk(f.stat, min); break;
       case 16: mk(f.stat, max); break;
-      case 17: mk(f.stat, num); break;
+      // per level: the value is the parameter, or rolled between min and max (Fortitude's life per level); as part of
+      // an elemental damage property it's the duration, which comes from the parameter only
+      case 17: mk(f.stat, num || (propDefs(code).length === 1 ? v : 0)); break;
       case 19: mk(f.stat, min | (min << 8), (skillId(param) << 6) | (max & 63)); break; // charges, level
       case 20: mk('item_indesctructible', 1); break;
       case 21: mk(f.stat, v, Number(f.val) || 0); break;
@@ -449,8 +451,11 @@ export function describeItem(item: D2Item): ItemDescription {
   if (def?.flags.includes('A') && item.defense !== undefined) {
     const ed = find(16);
     const flat = find(31);
-    // with Enhanced Defense the game counts the base as one higher (Andariel's Visage tops out at 387, not 385)
-    const d = (ed ? Math.floor(((item.defense + 1) * (100 + ed)) / 100) : item.defense) + flat;
+    // with Enhanced Defense the game counts the base as one above the top (Andariel's Visage tops out at 387, not
+    // 385); magic and rare drops already store that (real Heavy Boots with ED: 7, the top is 6), uniques don't
+    const top = item.ethereal ? Math.floor((def.maxAc ?? 0) * 1.5) : def.maxAc ?? 0;
+    const bump = item.defense <= top ? 1 : 0;
+    const d = (ed ? Math.floor(((item.defense + bump) * (100 + ed)) / 100) : item.defense) + flat;
     lines.push({ text: sprintf(GD.ui.ItemStats1h ?? 'Defense: %d', d), kind: 'base' });
   }
   if (def?.flags.includes('W')) {

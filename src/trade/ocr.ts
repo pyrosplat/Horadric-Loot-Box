@@ -50,7 +50,7 @@ async function toBitmap(image: Blob): Promise<ImageBitmap | HTMLImageElement> {
 export async function prepareImage(image: Blob, channel: 'brightest' | 'luminance' = 'brightest'): Promise<HTMLCanvasElement> {
   const bmp = await toBitmap(image);
   const w = bmp.width, h = bmp.height;
-  const scale = w < 900 ? Math.min(3, 1400 / w) : 1;
+  const scale = w < 1800 ? Math.min(3, 1800 / w) : 1;
   const c = document.createElement('canvas');
   c.width = Math.round(w * scale);
   c.height = Math.round(h * scale);

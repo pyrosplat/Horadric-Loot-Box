@@ -15,7 +15,21 @@ import {
   runewordBases,
   superiorRows,
   templateDefenseRange,
+  buildableRunewords,
+  runewordBaseProblem,
+  runewordSlots,
+  affixRows,
+  canHaveAffixes,
+  craftBases,
+  isType,
+  propStatsAt,
+  statByName,
+  type AffixPick,
+  type ItemStat,
+  type AffixQuality,
+  type AffixSide,
   type ModPick,
+  type PropDef,
   type RollSlot,
   type Rolls,
   type TemplateKind,
@@ -54,9 +68,13 @@ export interface ListingTags {
 export type ListingItem =
   | { kind: 'rune' | 'gem' | 'uber'; code: string; name: string; quantity: number }
   | { kind: TemplateKind; id: number; name: string; rolls: Rolls; ethereal: boolean; defense?: number }
+  /** A runeword ("1 X Call To Arms", "Crystal Sword" in the tags): the runeword, its base and its rolls. */
+  | { kind: 'runeword'; row: number; name: string; code: string; base: string; rolls: Rolls; ethereal: boolean }
   /** A whole set listed as one item ("1 X Angelic Raiment"): every piece. */
   | { kind: 'fullset'; set: string; name: string; pieces: { id: number; name: string; rolls: Rolls; defense?: number }[] }
-  | { kind: 'base'; code: string; name: string; sockets: number; ethereal: boolean; defense?: number; superior?: ModPick; auto?: ModPick; skills: { skill: number; level: number }[] };
+  | { kind: 'base'; code: string; name: string; sockets: number; ethereal: boolean; defense?: number; superior?: ModPick; auto?: ModPick; skills: { skill: number; level: number }[] }
+  /** A magic, rare or crafted item: its base and the prefixes and suffixes (and crafting recipe) that make up its stats. */
+  | { kind: AffixQuality; code: string; name: string; affixes: AffixPick[]; craft?: ModPick; auto?: ModPick; sockets: number; ethereal: boolean; defense?: number; exact?: ItemStat[] };
 
 export interface ListingResult {
   tags: ListingTags;
@@ -92,17 +110,29 @@ export function norm(s: string): string {
     .replace(/(?<=\d)[il|](?=\d|\b|%)|(?<=\b|[+-])[il|](?=\d)/g, '1')
     .replace(/[^a-z0-9%+\-'() ]/g, ' ')
     .replace(/(\d)([a-z])/g, '$1 $2') // "176Defense"
+    .replace(/\bt0\b/g, 'to') // "+13T0 Dexterity"
+    .replace(/(\d%? )t[o0](?=[a-z]{3,})/g, '$1to ') // "+31Tolife", "+2ToStrength"
     .replace(/\bin(\d)/g, 'in $1') // "in1second"
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/** Lines that describe the base item, not a roll. */
+const BASE_LINE = /^(\d+ defense|defense:? \d+|durability|required|item level|(one|two)-hand damage|throw damage|quantity)\b/;
 
 /** A random roll between lo and hi (both included), for rolls a listing doesn't show. */
 export const randomRoll = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1));
 
 const STOP = new Set(['to', 'of', 'the', 'by', 'a', 'an', 'on', 'x']);
 /** Words of a stat line with the numbers blanked, ignoring small words and order ("All Resistances +10" = "+10 To All Resistances"). */
-const tokens = (s: string) => norm(s).replace(/\(|\)/g, ' ').replace(/\d+/g, '#').split(' ').filter((t) => t && !STOP.has(t));
+const tokens = (s: string) =>
+  norm(s)
+    .replace(/\(any class\)/g, ' ') // Traderie: "+6 To Battle Orders (Any Class)"
+    .replace(/\(|\)/g, ' ')
+    .replace(/\d+/g, '#')
+    .replace(/(^|\s)\+#/g, '$1#') // "+6" and "6" (a red "+" OCR drops) read the same
+    .split(' ')
+    .filter((t) => t && !STOP.has(t));
 /** How alike two stat lines' wordings are, 0–1, whatever the word order (typos in a word still count). */
 function wordingSimilarity(a: string, b: string): number {
   const ta = tokens(a), tb = tokens(b);
@@ -193,6 +223,7 @@ function allCandidates(): Candidate[] {
       out.push({ kind, ref: t.id, names: [norm(bare)], item: undefined as never });
     }
   for (const b of runewordBases()) out.push({ kind: 'base', ref: b.code, names: [norm(b.name)], item: undefined as never });
+  for (const rw of buildableRunewords()) out.push({ kind: 'runeword', ref: rw.row, names: [norm(rw.name)], item: undefined as never });
   // whole sets: Traderie lists a complete set under the set's name
   const setKeys = [...new Set(Object.values(GD.setItems).map((si) => si.setKey))];
   for (const key of setKeys) out.push({ kind: 'fullset', ref: key, names: [norm(GD.sets[key]?.name ?? key)], item: undefined as never });
@@ -233,7 +264,8 @@ function readRoll(lines: string[], used: Set<number>, lo: string, hi: string): {
   if (idx < 0) return undefined;
   let best: { value: number; line: number; score: number } | undefined;
   lines.forEach((l, i) => {
-    if (used.has(i)) return;
+    // the item's own base lines ("Defense: 396", Traderie's "176Defense", durability, requirements) aren't rolls
+    if (used.has(i) || BASE_LINE.test(norm(l))) return;
     const s = wordingSimilarity(l, lo);
     const got = numbers(l);
     if (s < 0.8 || got.length !== loN.length) return;
@@ -249,7 +281,12 @@ function hasLine(lines: string[], text: string): boolean {
 }
 
 function readTemplate(kind: TemplateKind, id: number, lines: string[], warnings: string[], errors: string[]): { rolls: Rolls; fit: number } {
-  const slots = rollSlots(kind, id);
+  const code = (kind === 'unique' ? GD.uniques[id] : GD.setItems[id]).code;
+  return readRolls(rollSlots(kind, id), lines, warnings, errors, GD.items[code]?.maxAc ?? 0);
+}
+
+/** Reads each roll of an item's properties from the listing's lines (uniques, set items and runewords alike). */
+function readRolls(slots: RollSlot[], lines: string[], warnings: string[], errors: string[], baseMaxAc = 0): { rolls: Rolls; fit: number } {
   const used = new Set<number>();
   const rolls: Rolls = {};
   let seen = 0, total = 0;
@@ -301,8 +338,7 @@ function readTemplate(kind: TemplateKind, id: number, lines: string[], warnings:
     let v = s.lo < 0 && r.value > 0 ? -r.value : r.value;
     // Traderie lists flat defense ("+159 Defense") as the item's total, base included: take the base out
     if (s.prop[0] === 'ac' && v > s.hi) {
-      const code = (kind === 'unique' ? GD.uniques[id] : GD.setItems[id]).code;
-      const flat = v - (GD.items[code]?.maxAc ?? 0);
+      const flat = v - baseMaxAc;
       if (flat >= s.lo && flat <= s.hi) {
         warnings.push(`Read "+${v} Defense" as the total defense: +${flat} Defense on top of the base.`);
         v = flat;
@@ -333,6 +369,28 @@ function templateDefense(kind: TemplateKind, id: number, lines: string[], rolls:
   for (let b = range.hi; b >= range.lo; b--) if ((ethereal ? Math.floor(b * 1.5) : b) + flat === total) return b;
   errors.push(`Defense ${total} isn't possible for this item (base ${range.lo}\u2013${range.hi}${flat ? `, +${flat}` : ''}).`);
   return undefined;
+}
+
+/**
+ * A runeword: which base it's in (Traderie puts it in the tags: "Softcore · Crystal Sword"), ethereal or not, and
+ * the runeword's own rolls ("+6 To Battle Orders").
+ */
+function readRuneword(row: number, lines: string[], warnings: string[], errors: string[]): ListingItem {
+  const rw = GD.runewords.find((r) => r.row === row)!;
+  const text = ` ${lines.map(norm).join(' | ')} `;
+  // the longest base name on the listing that the runeword can be made in
+  const base = Object.entries(GD.items)
+    .filter(([code, d]) => (d.kind === 'weapon' || d.kind === 'armor') && !d.quest && text.includes(` ${norm(d.name)} `) && !runewordBaseProblem(row, code))
+    .sort((a, b) => b[1].name.length - a[1].name.length)[0];
+  const ethereal = /\bethereal\b/.test(text);
+  if (!base) {
+    errors.push(`Couldn't read which base ${rw.name} is in.`);
+    return { kind: 'runeword', row, name: rw.name, code: '', base: '', rolls: {}, ethereal };
+  }
+  const [code, def] = base;
+  if (ethereal && !canBuildEthereal('base', code)) errors.push(`A ${def.name} can't be ethereal.`);
+  const r = readRolls(runewordSlots(row), lines, warnings, errors, def.maxAc ?? 0);
+  return { kind: 'runeword', row, name: rw.name, code, base: def.name, rolls: r.rolls, ethereal };
 }
 
 /** A whole set: every piece, with whatever rolls the listing shows (usually none; then random rolls). */
@@ -457,6 +515,365 @@ function readBase(code: string, lines: string[], warnings: string[], errors: str
   return { kind: 'base', code, name: def.name, sockets, ethereal, defense, superior, auto, skills };
 }
 
+// ---------------------------------------------------------------- magic, rare and crafted items
+
+/** The listing's tag lines ("Reign Of The Warlock - Ladder - PC - Magic"), which aren't stats. */
+const TAG_LINE = /reign of the warlock|\brotw\b|soft ?core|hard ?core|\bladder\b|\bpc\b|\bpenta\b|\bwhite\b|\bswitch\b|\bxbox\b|playstation|nintendo/;
+const QUALITY_TAG = /^(magic|rare|crafted|superior|elite|exceptional|normal|ethereal|unidentified)$/;
+const isTagLine = (l: string) => TAG_LINE.test(l) || QUALITY_TAG.test(l);
+
+/** Lines of the item that are stats: not the title, tags, time, "Make an Offer", base lines or sockets. */
+function statLines(lines: string[], title?: string): { text: string; digits: boolean }[] {
+  return lines
+    .filter((l) => l !== title)
+    .map((l) => ({ l, n: norm(l) }))
+    .filter(({ n }) => n && !isTagLine(n) && readAge([n]) === undefined && !/make an? offer|\boffers?\b|rune value|trading for/.test(n))
+    .filter(({ n }) => !BASE_LINE.test(n) && socketsOn([n]) === undefined && !/^eth(ereal)?\b/.test(n))
+    .map(({ l, n }) => ({ text: l, digits: /\d/.test(n) }));
+}
+
+/** A prefix, suffix, automatic mod or crafting recipe, with where its lines are on the listing. */
+interface Source {
+  side: AffixSide | 'auto' | 'craft';
+  row: number;
+  group: number;
+  level: number;
+  maxLevel?: number;
+  mods: PropDef[];
+  /** Each of its tooltip lines: the listing line it's on and the line's numbers at the lowest and highest roll. */
+  lines: { at: number; lo: number[]; hi: number[]; score: number }[];
+  /** For each mod that rolls: which of its lines and which number on that line show the roll. */
+  vary: ({ line: number; pos: number; loN: number; hiN: number } | undefined)[];
+}
+
+/** Where a set of mods shows up on the listing, or undefined if any of its lines is missing. */
+function placeMods(mods: PropDef[], stats: { text: string }[]): Pick<Source, 'lines' | 'vary'> | undefined {
+  const rl = propLines(mods);
+  if (!rl.length) return undefined;
+  const taken = new Set<number>();
+  const lines: Source['lines'] = [];
+  for (const r of rl) {
+    const want = numbers(r.lo).length;
+    // stricter than for uniques: "Eldritch Skills" and "Chaos Skills" differ by one word
+    let best = -1, bs = 0.85;
+    stats.forEach((st, i) => {
+      if (taken.has(i) || numbers(st.text).length !== want) return;
+      const sc = wordingSimilarity(st.text, r.lo);
+      if (sc >= bs) (bs = sc), (best = i);
+    });
+    if (best < 0) return undefined;
+    taken.add(best);
+    lines.push({ at: best, lo: numbers(r.lo), hi: numbers(r.hi), score: bs });
+  }
+  // which number each rolling mod moves: set just that mod to its top roll and see what changes
+  const vary = mods.map((m, i) => {
+    if (m[2] === m[3]) return undefined;
+    const alt = propLines(mods.map((x, j): PropDef => [x[0], x[1], j === i ? Math.max(x[2], x[3]) : Math.min(x[2], x[3]), j === i ? Math.max(x[2], x[3]) : Math.min(x[2], x[3])]));
+    for (let k = 0; k < Math.min(alt.length, rl.length); k++) {
+      const a = numbers(alt[k].lo), b = lines[k].lo;
+      const pos = a.findIndex((n, q) => n !== b[q]);
+      if (pos >= 0) return { line: k, pos, loN: b[pos], hiN: a[pos] };
+    }
+    return undefined;
+  });
+  return { lines, vary };
+}
+
+/**
+ * Splits the listing's stats into the prefixes and suffixes (plus a crafting recipe's own mods, or a class item's
+ * automatic mod) that the item must have: every stat line covered, every number inside the summed ranges, and
+ * no more affixes than the quality allows. Fewest affixes wins. Values of each affix come from the lines.
+ */
+function solveAffixes(code: string, quality: AffixQuality, stats: { text: string; digits: boolean }[], craftRow?: number) {
+  const sources: Source[] = [];
+  const add = (src: Omit<Source, 'lines' | 'vary'>) => {
+    const placed = placeMods(src.mods, stats);
+    if (placed) sources.push({ ...src, ...placed });
+  };
+  for (const side of ['prefix', 'suffix'] as const)
+    for (const row of affixRows(side, code, quality)) {
+      const a = GD.affixes[side][row];
+      add({ side, row, group: a.group, level: a.level, maxLevel: a.maxLevel, mods: a.mods });
+    }
+  for (const row of autoRows(code)) add({ side: 'auto', row, group: -1, level: GD.automagic[row].level, maxLevel: GD.automagic[row].maxLevel, mods: GD.automagic[row].mods });
+  let start: Source[] = [];
+  if (craftRow !== undefined) {
+    const c = GD.crafts[craftRow];
+    const placed = placeMods(c.mods, stats);
+    if (!placed) return { error: `A ${c.name} always has ${propLines(c.mods).map((l) => `"${l.text}"`).join(', ')}; the listing doesn't show all of them.` };
+    start = [{ side: 'craft', row: craftRow, group: -1, level: 0, mods: c.mods, ...placed }];
+  }
+  // sources for each line, the ones whose own range fits the line's number first
+  const byLine = new Map<number, Source[]>();
+  for (const src of sources)
+    src.lines.forEach((l) => {
+      if (!byLine.has(l.at)) byLine.set(l.at, []);
+      byLine.get(l.at)!.push(src);
+    });
+  const fitsAlone = (src: Source, at: number) => {
+    const l = src.lines.find((x) => x.at === at)!;
+    const n = numbers(stats[at].text);
+    return l.lo.every((lo, p) => n[p] >= Math.min(lo, l.hi[p]) && n[p] <= Math.max(lo, l.hi[p]));
+  };
+  const scoreAt = (src: Source, at: number) => src.lines.find((x) => x.at === at)!.score;
+  for (const [at, list] of byLine) list.sort((a, b) => scoreAt(b, at) - scoreAt(a, at) || Number(fitsAlone(b, at)) - Number(fitsAlone(a, at)) || b.level - a.level);
+
+  const need = stats.map((s, i) => (s.digits ? i : -1)).filter((i) => i >= 0);
+  const maxSide = quality === 'magic' ? 1 : 3;
+  const maxTotal = quality === 'crafted' ? 4 : quality === 'magic' ? 2 : isType(code, 'jewl') ? 4 : 6;
+
+  const evaluate = (chosen: Source[]) => {
+    const per = new Map<number, { src: Source; k: number }[]>();
+    chosen.forEach((src) => src.lines.forEach((l, k) => per.set(l.at, [...(per.get(l.at) ?? []), { src, k }])));
+    const values = new Map<Source, number[]>(chosen.map((src) => [src, src.mods.map((m) => Math.max(m[2], m[3]))]));
+    for (const [at, cs] of per) {
+      const n = numbers(stats[at].text);
+      for (let p = 0; p < n.length; p++) {
+        const lo = cs.reduce((t, c) => t + c.src.lines[c.k].lo[p], 0), hi = cs.reduce((t, c) => t + c.src.lines[c.k].hi[p], 0);
+        if (n[p] < Math.min(lo, hi) || n[p] > Math.max(lo, hi)) return undefined;
+        // share the number out among the mods that roll it
+        let left = n[p] - lo;
+        for (const c of cs)
+          c.src.vary.forEach((v, i) => {
+            if (!v || v.line !== c.k || v.pos !== p) return;
+            const span = v.hiN - v.loN;
+            const take = span >= 0 ? Math.min(Math.max(left, 0), span) : Math.max(Math.min(left, 0), span);
+            left -= take;
+            const [, , mn, mx] = c.src.mods[i];
+            values.get(c.src)![i] = span ? mn + Math.round((take * (mx - mn)) / span) : mx;
+          });
+        if (left !== 0 && cs.some((c) => c.src.vary.some((v) => v && v.line === c.k && v.pos === p))) return undefined;
+      }
+    }
+    // mods whose roll isn't shown anywhere: random
+    for (const src of chosen) src.vary.forEach((v, i) => !v && src.mods[i][2] !== src.mods[i][3] && (values.get(src)![i] = randomRoll(Math.min(src.mods[i][2], src.mods[i][3]), Math.max(src.mods[i][2], src.mods[i][3]))));
+    return values;
+  };
+
+  let nodes = 0;
+  let found: { chosen: Source[]; values: Map<Source, number[]> } | undefined;
+  const dfs = (chosen: Source[], limit: number): boolean => {
+    if (++nodes > 200000) return false;
+    const covered = new Set(chosen.flatMap((s) => s.lines.map((l) => l.at)));
+    const u = need.find((i) => !covered.has(i));
+    if (u === undefined) {
+      const values = evaluate(chosen);
+      if (values) found = { chosen, values };
+      return !!values;
+    }
+    const affixes = chosen.filter((s) => s.side === 'prefix' || s.side === 'suffix');
+    if (affixes.length >= limit) return false;
+    for (const src of byLine.get(u) ?? []) {
+      if (chosen.includes(src)) continue;
+      if (src.side === 'auto' ? chosen.some((s) => s.side === 'auto') : chosen.filter((s) => s.side === src.side).length >= maxSide) continue;
+      if (src.side !== 'auto' && chosen.some((s) => s.side === src.side && s.group === src.group)) continue;
+      const lvl = Math.max(src.level, ...chosen.map((s) => s.level)), cap = Math.min(src.maxLevel ?? 99, ...chosen.map((s) => s.maxLevel ?? 99));
+      if (lvl > cap) continue;
+      if (dfs([...chosen, src], limit)) return true;
+    }
+    return false;
+  };
+  for (let limit = 0; limit <= maxTotal && !found && nodes <= 200000; limit++) dfs(start, limit);
+  if (!found) {
+    const reachable = new Set(sources.flatMap((s) => s.lines.map((l) => l.at)).concat(start.flatMap((s) => s.lines.map((l) => l.at))));
+    const missing = need.filter((i) => !reachable.has(i)).map((i) => `"${stats[i].text}"`);
+    return { error: missing.length ? `No ${quality} ${GD.items[code].name} can have ${missing.join(', ')}.` : `These stats don't add up to a possible ${quality} ${GD.items[code].name}. The listing may be edited or misread.` };
+  }
+  const pick = (s: Source): ModPick => ({ row: s.row, values: found!.values.get(s)! });
+  return {
+    affixes: found.chosen.filter((s) => s.side === 'prefix' || s.side === 'suffix').map((s) => ({ side: s.side as AffixSide, ...pick(s) })),
+    craft: found.chosen.find((s) => s.side === 'craft'),
+    auto: found.chosen.find((s) => s.side === 'auto'),
+    pick,
+  };
+}
+
+// ---------------------------------------------------------------- crafted items: stats exactly as listed
+
+let lineTemplates: { mods: PropDef[]; lo: string }[] | undefined;
+/**
+ * Every property the game tables use (alone, or as a group that shows as one line, like "Adds 1-17 Lightning
+ * Damage"), with its tooltip wording: used to turn a listing's stat lines back into stats.
+ */
+function templates(): { mods: PropDef[]; lo: string }[] {
+  if (lineTemplates) return lineTemplates;
+  const out = new Map<string, { mods: PropDef[]; lo: string }>();
+  const add = (mods: PropDef[]) => {
+    const key = mods.map((m) => `${m[0]}/${m[1]}`).join('|');
+    if (out.has(key) || mods.some((m) => !propDefs(m[0]).length)) return;
+    const rl = propLines(mods);
+    if (rl.length === 1 && /\d/.test(rl[0].lo)) out.set(key, { mods, lo: rl[0].lo });
+  };
+  const groups: PropDef[][] = [
+    ...GD.affixes.prefix.map((a) => a.mods),
+    ...GD.affixes.suffix.map((a) => a.mods),
+    ...GD.automagic.map((a) => a.mods),
+    ...GD.superior.map((a) => a.mods),
+    ...GD.crafts.map((c) => c.mods),
+    ...Object.values(GD.uniques).map((u) => u.props),
+    ...Object.values(GD.setItems).flatMap((si) => [si.props, ...si.partial.map(([, p]) => p)]),
+    ...GD.runewords.map((r) => r.props),
+  ];
+  for (const g of groups) {
+    if (g.length > 1) add(g);
+    for (const m of g) add([m]);
+  }
+  return (lineTemplates = [...out.values()]);
+}
+
+/** The values that make a template read exactly like a listing line, or undefined. */
+function valuesFor(mods: PropDef[], line: string): number[] | undefined {
+  const want = numbers(line);
+  const options = mods.map((m) => [...new Set([...want.flatMap((n) => [n, -n]), Math.max(m[2], m[3])])]);
+  const pick: number[] = [];
+  const tryAt = (i: number): boolean => {
+    if (i === mods.length) {
+      const rl = propLines(mods.map((m, k): PropDef => [m[0], m[1], pick[k], pick[k]]));
+      return rl.length === 1 && numbers(rl[0].lo).join() === want.join();
+    }
+    for (const v of options[i]) {
+      pick[i] = v;
+      if (tryAt(i + 1)) return true;
+    }
+    return false;
+  };
+  return options.reduce((n, o) => n * o.length, 1) <= 400 && tryAt(0) ? [...pick] : undefined;
+}
+
+/**
+ * A crafted item's stats, exactly as its listing shows them: each line matched to the property whose wording it
+ * has, with the listing's numbers. A line OCR garbled ("+14 To —") is taken as one of the recipe's own mods
+ * (a Blood Ring always has life) when exactly one of them is missing and its range fits the number.
+ */
+function readExactStats(stats: { text: string; digits: boolean }[], craftRow: number) {
+  const out: ItemStat[] = [];
+  const errors: string[] = [], warnings: string[] = [];
+  const unread: number[] = [];
+  const used = new Set<string>();
+  stats.forEach((st, i) => {
+    const n = numbers(st.text).length;
+    const ranked = templates()
+      .map((t) => ({ t, sc: numbers(t.lo).length === n ? wordingSimilarity(st.text, t.lo) : 0 }))
+      .filter((x) => x.sc >= (st.digits ? 0.85 : 0.9))
+      .sort((a, b) => b.sc - a.sc);
+    for (const { t } of ranked.slice(0, 12)) {
+      const v = valuesFor(t.mods, st.text);
+      if (!v) continue;
+      t.mods.forEach((m, k) => (out.push(...propStatsAt(m[0], m[1], v[k], v[k], v[k]).stats), used.add(m[0])));
+      return;
+    }
+    if (st.digits) unread.push(i);
+  });
+  // the recipe's own mods are always there: a garbled line can only be one that's missing
+  const missing = GD.crafts[craftRow].mods.filter((m) => !used.has(m[0]) && propLines([m]).length === 1 && numbers(propLines([m])[0].lo).length === 1);
+  for (const i of unread) {
+    const [n] = numbers(stats[i].text);
+    const fits = numbers(stats[i].text).length === 1 ? missing.filter((m) => n >= Math.min(m[2], m[3]) && n <= Math.max(m[2], m[3])) : [];
+    if (fits.length === 1) {
+      const m = fits[0];
+      out.push(...propStatsAt(m[0], m[1], n, n, n).stats);
+      missing.splice(missing.indexOf(m), 1);
+      warnings.push(`Read "${stats[i].text}" as "${propLines([[m[0], m[1], n, n]])[0].lo}", which every ${GD.crafts[craftRow].name} has.`);
+    } else errors.push(`Couldn't read the stat "${stats[i].text}".`);
+  }
+  if (!out.length && !errors.length) errors.push("Couldn't read any stats on this listing.");
+  return { stats: out, errors, warnings };
+}
+
+/** The longest base name (that can be magic, rare or crafted) inside a text, as whole words. */
+function baseIn(text: string, allowed?: string[]): string | undefined {
+  const t = ` ${norm(text)} `;
+  let best: string | undefined;
+  for (const code of allowed ?? GD.itemOrder) {
+    const d = GD.items[code];
+    if (!d || !canHaveAffixes(code) || !t.includes(` ${norm(d.name)} `)) continue;
+    if (!best || d.name.length > GD.items[best].name.length) best = code;
+  }
+  return best;
+}
+
+/**
+ * Magic, rare and crafted listings. Traderie titles them with the base ("Amulet", "Jewel"), a charm's catalog name
+ * ("Celtic Knot Grand Charm") or a crafting recipe ("Blood Gloves"), and tags the quality. Undefined when the
+ * listing isn't one of these.
+ */
+function readAffixListing(title: string | undefined, lines: string[], titled: boolean): { item?: ListingItem; errors: string[]; warnings: string[] } | undefined {
+  const tagWords = lines.map(norm).filter(isTagLine).join(' ');
+  const tagged: AffixQuality | undefined = /\bcrafted\b/.test(tagWords) ? 'crafted' : /\brare\b/.test(tagWords) ? 'rare' : /\bmagic\b/.test(tagWords) ? 'magic' : undefined;
+  const t = title ? norm(title) : '';
+  const craftOf = (l: string) => GD.crafts.findIndex((c) => similarity(norm(c.name), l) >= 0.85);
+  let craftRow = t ? craftOf(t) : -1;
+  if (craftRow < 0 && !titled) for (const l of lines.slice(0, 3)) if (craftRow < 0) craftRow = craftOf(norm(l).replace(/^\S{0,3}\s*\d{1,3} ?x /, ''));
+  if (craftRow < 0 && !tagged && (titled || !title || !baseIn(title))) return undefined;
+  const quality: AffixQuality = craftRow >= 0 ? 'crafted' : tagged ?? 'magic';
+  const errors: string[] = [], warnings: string[] = [];
+
+  // the base: named in the title or the lines; a crafted item's comes from its recipe (and the Elite/Exceptional tag)
+  let code: string | undefined;
+  if (quality === 'crafted') {
+    if (craftRow < 0) return { errors: [`Couldn't tell which crafted item "${title ?? ''}" is.`], warnings };
+    const bases = craftBases(craftRow);
+    code = baseIn(lines.join(' | '), bases);
+    if (!code && bases.length === 1) code = bases[0];
+    if (!code) {
+      const tier = /\belite\b/.test(tagWords) ? 3 : /\bexceptional\b/.test(tagWords) ? 2 : /\bnormal\b/.test(tagWords) ? 1 : 0;
+      const byTier = bases.filter((b) => GD.items[b].tier === tier);
+      if (tier && byTier.length === 1) code = byTier[0];
+    }
+    if (!code) return { errors: [`Couldn't tell which base this ${GD.crafts[craftRow].name} is on.`], warnings };
+  } else {
+    code = (title && baseIn(title)) || baseIn(lines.join(' | '));
+    if (!code) return { errors: [`Couldn't tell which base this ${quality} item is.`], warnings };
+  }
+  const def = GD.items[code];
+  const ethereal = lines.some((l) => /\bethereal\b/.test(norm(l)));
+  if (ethereal && !canBuildEthereal('base', code)) errors.push(`A ${def.name} can't be ethereal.`);
+  const sockets = Math.min(socketsOn(lines) ?? 0, maxBaseSockets(code));
+
+  const stats = statLines(lines, title);
+  if (!stats.some((s) => s.digits)) return { errors: [...errors, "Couldn't read any stats on this listing."], warnings };
+  if (quality === 'crafted') {
+    // crafted items are made exactly as listed: every stat line as it reads, no affix or range check
+    const exact = readExactStats(stats, craftRow);
+    if (exact.errors.length) return { errors: [...errors, ...exact.errors], warnings };
+    let defense: number | undefined;
+    const line = lines.map(norm).find((l) => /^\d+ defense$|^defense:? \d+$/.test(l));
+    if (line && def.minAc !== undefined && def.maxAc !== undefined && !exact.stats.some((x) => x.id === statByName('item_armor_percent')?.id)) {
+      const shown = numbers(line)[0];
+      const flat = exact.stats.filter((x) => x.id === statByName('armorclass')?.id).reduce((t, x) => t + x.value, 0);
+      for (let b = def.maxAc; b >= def.minAc && defense === undefined; b--) if ((ethereal ? Math.floor(b * 1.5) : b) + flat === shown) defense = b;
+    }
+    return { item: { kind: 'crafted', code, name: `${GD.crafts[craftRow].name} (${def.name})`, affixes: [], exact: exact.stats, sockets, ethereal, defense }, errors, warnings: [...warnings, ...exact.warnings] };
+  }
+  // magic first; an untagged listing whose stats need more than a prefix and a suffix is rare
+  let solved = solveAffixes(code, quality, stats);
+  let q = quality;
+  if ('error' in solved && !tagged && quality === 'magic') {
+    const rare = solveAffixes(code, 'rare', stats);
+    if (!('error' in rare)) (solved = rare), (q = 'rare');
+  }
+  if ('error' in solved) return { errors: [...errors, solved.error!], warnings };
+  const label = `${q === 'magic' ? 'Magic' : 'Rare'} ${def.name}`;
+  // base defense: the top one with Enhanced Defense (like a drop); otherwise read from the listing or random
+  let defense: number | undefined;
+  if (def.flags.includes('A') && def.minAc !== undefined && def.maxAc !== undefined && !solved.affixes.some((a) => GD.affixes[a.side][a.row].mods.some((m) => m[0] === 'ac%'))) {
+    const line = lines.map(norm).find((l) => /^\d+ defense$|^defense:? \d+$/.test(l));
+    if (line) {
+      // the listing shows the total: base (×1.5 when ethereal) plus any flat defense the affixes rolled
+      const shown = numbers(line)[0];
+      let flat = 0;
+      for (const a of solved.affixes) GD.affixes[a.side][a.row].mods.forEach((m, i) => m[0] === 'ac' && (flat += a.values[i]));
+      for (let b = def.maxAc; b >= def.minAc && defense === undefined; b--) if ((ethereal ? Math.floor(b * 1.5) : b) + flat === shown) defense = b;
+      if (defense === undefined) warnings.push(`Defense ${shown} doesn't fit a ${def.name}; its base defense is random.`);
+    }
+  }
+  return {
+    item: { kind: q, code, name: label, affixes: solved.affixes, craft: solved.craft && solved.pick(solved.craft), auto: solved.auto && solved.pick(solved.auto), sockets, ethereal, defense },
+    errors,
+    warnings,
+  };
+}
+
 // ---------------------------------------------------------------- the whole listing
 
 /** How old a listing is, from Traderie's "in 50 seconds", "3 hours ago", "a day ago"…, in seconds. */
@@ -465,23 +882,19 @@ export function readAge(lines: string[]): number | undefined {
   let found: number | undefined;
   for (const l of lines.map(norm)) {
     const m = /\b(a|an|\d{1,3}) (second|sec|minute|min|hour|hr|day|week|month|year)s?\b/.exec(l);
-    if (m && (/\bago\b|^in\b|\bin \d|\bin an?\b/.test(l) || l === m[0])) found = (m[1] === 'a' || m[1] === 'an' ? 1 : Number(m[1])) * unit[m[2]];
+    // "in 50 seconds", "3 hours ago", or just "42 seconds" (a clipped "in")
+    if (m && (/\bago\b|^in\b|\bin \d|\bin an?\b/.test(l) || l === m[0] || new RegExp(`^[a-z]{1,2} ${m[0]}$`).test(l))) found = (m[1] === 'a' || m[1] === 'an' ? 1 : Number(m[1])) * unit[m[2]];
     else if (/\bjust now\b/.test(l)) found = 0;
   }
   return found;
 }
 
-/** Magic, rare and crafted items and runewords can't be built yet; say so instead of guessing. */
-function unsupported(title: string | undefined, lines: string[], matched: boolean): string | undefined {
+/** Runewords the app can't build; say so instead of guessing. */
+function unsupported(title: string | undefined): string | undefined {
   if (!title) return undefined;
   const t = norm(title);
   const rw = GD.runewords.find((r) => r.complete && similarity(norm(r.name), t) >= 0.9);
-  if (rw) return `${rw.name} is a runeword. Runewords can't be traded yet.`;
-  if (matched) return undefined;
-  const all = lines.map(norm).join(' ');
-  if (/\b(magic|rare|crafted)\b/.test(all)) return 'Magic, rare and crafted items can\u2019t be traded yet.';
-  const base = Object.values(GD.items).map((i) => norm(i.name)).filter((n) => n.length > 3 && t.endsWith(n)).sort((a, b) => b.length - a.length)[0];
-  if (base && base !== t) return `"${title}" looks like a magic or rare item. Magic, rare and crafted items can't be traded yet.`;
+  if (rw && !buildableRunewords().some((b) => b.row === rw.row)) return `${rw.name} is a runeword this app can't build yet.`;
   return undefined;
 }
 
@@ -504,13 +917,18 @@ function payable(): { code: string; name: string; keys: string[] }[] {
  * Reads the "Trading For" lines: "1 X Ist Rune", "1XIstRune" (squashed), "1 X Lo Rune OR" / "1 X Ohm Rune"
  * (either one). Lines not separated by OR are all wanted together. Only runes, gems, keys and parts can be paid.
  */
-export function readAsk(lines: string[]): { options: AskItem[][]; problems: string[] } {
-  const options: AskItem[][] = [];
+export function readAsk(lines: string[]): { options: AskItem[][]; problems: string[]; skipped: string[] } {
+  // each option: what it asks for, and anything in it that can't be paid here
+  const opts: { items: AskItem[]; bad: string[] }[] = [];
   const problems: string[] = [];
-  let cur: AskItem[] = [];
+  let cur = { items: [] as AskItem[], bad: [] as string[] };
   let or = false;
+  const close = () => {
+    if (cur.items.length || cur.bad.length) opts.push(cur);
+    cur = { items: [], bad: [] };
+  };
   for (const raw of lines) {
-    const l = norm(raw);
+    const l = norm(raw).replace(/[)\]](?=[a-z])/g, 'j'); // OCR reads a J as ")": "9X)ah Rune"
     if (/make an? offer|open to offers|\boffers?\b/.test(l)) {
       problems.push("The listing asks for offers, not a set price, so there's nothing to pay.");
       continue;
@@ -528,19 +946,23 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
       const sc = similarity(want, k);
       if (sc >= 0.8 && (!best || sc > best.score)) best = { code: p.code, name: p.name, score: sc };
     }
-    if (or && cur.length) (options.push(cur), (cur = []));
+    if (or) close();
     or = endsOr;
     if (!best) {
-      problems.push(`The listing asks for "${raw.replace(/^[^0-9]*/, '').trim()}". Only runes, gems, keys and parts can be paid with here.`);
+      cur.bad.push(raw.replace(/^[^0-9]*/, '').replace(/\s+or$/i, '').trim());
       continue;
     }
     const qty = /^\d+$/.test(m[1]) ? Math.max(1, Number(m[1])) : 1; // "l x" is OCR's "1 X"
-    const same = cur.find((a) => a.code === best!.code);
+    const same = cur.items.find((a) => a.code === best!.code);
     if (same) same.qty += qty;
-    else cur.push({ code: best.code, qty, name: best.name });
+    else cur.items.push({ code: best.code, qty, name: best.name });
   }
-  if (cur.length) options.push(cur);
-  return { options, problems };
+  close();
+  // an option with something that can't be paid here ("1 X Random Minor Key") is dropped when another option can be
+  const good = opts.filter((o) => !o.bad.length);
+  const skipped = opts.filter((o) => o.bad.length).map((o) => [...o.bad, ...o.items.map((a) => `${a.qty} X ${a.name}`)].join(' + '));
+  if (!good.length) for (const t of skipped) problems.push(`The listing asks for "${t}". Only runes, gems, keys and parts can be paid with here.`);
+  return { options: good.map((o) => o.items), problems, skipped: good.length ? skipped : [] };
 }
 
 /** "1× Ist Rune", "1× Lo Rune or 1× Ohm Rune" */
@@ -554,11 +976,13 @@ export function readListing(rawLines: string[], price?: string[]): ListingResult
   const r = readListingItem(rawLines);
   const all = rawLines.map((l) => l.trim()).filter(Boolean);
   const cut = all.findIndex((l) => /^trading for\b/.test(norm(l)));
-  const tail = cut >= 0 ? all.slice(cut + 1).filter((l) => !/rune value|^in \d|\bago\b|^in\d/.test(norm(l))) : [];
+  // no "Trading For": a "Make an Offer" listing, or a price that wasn't in the screenshot
+  const tail = cut >= 0 ? all.slice(cut + 1).filter((l) => !/rune value|^in \d|\bago\b|^in\d/.test(norm(l))) : all.filter((l) => /make an? offer/.test(norm(l)));
   const reads = [price ?? [], tail].map(readAsk);
   const best = reads.find((a) => a.options.length && !a.problems.length) ?? reads.find((a) => a.options.length) ?? reads.find((a) => a.problems.length) ?? reads[0];
   if (best.problems.length) r.errors.push(...best.problems);
   else if (!best.options.length) r.errors.push("Couldn't read what the listing is trading for.");
+  else for (const t of best.skipped) r.warnings.push(`Left out the "${t}" option: only runes, gems, keys and parts can be paid with here.`);
   return { ...r, ask: best.options.length ? best.options : undefined };
 }
 
@@ -569,9 +993,11 @@ function readListingItem(rawLines: string[]): ListingResult {
   const age = readAge(all);
   const itemLines = cut >= 0 ? all.slice(0, cut) : all;
   // the title: "1 X Demonhead" (the number is how many)
-  const ti = itemLines.findIndex((l) => /^\d{1,3} ?x /.test(norm(l)));
-  const titleQty = ti >= 0 ? Number(/^(\d{1,3})/.exec(norm(itemLines[ti]))![1]) : undefined;
-  const lines = itemLines.map((l, i) => (i === ti ? l.replace(/^\s*\d{1,3}\s*[xX×]\s+/, '') : l));
+  // (OCR sometimes puts a stray mark in front: "© 1X Blood Ring")
+  const TITLE = /^(?:\S{1,2}\s+)?(\d{1,3}) ?x /;
+  const ti = itemLines.findIndex((l) => TITLE.test(norm(l)));
+  const titleQty = ti >= 0 ? Number(TITLE.exec(norm(itemLines[ti]))![1]) : undefined;
+  const lines = itemLines.map((l, i) => (i === ti ? l.replace(/^\s*(?:\S{1,2}\s+)?\d{1,3}\s*[xX×]\s+/, '') : l));
   const title = ti >= 0 ? lines[ti] : undefined;
 
   const tags = readTags(itemLines);
@@ -586,8 +1012,15 @@ function readListingItem(rawLines: string[]): ListingResult {
   // match the title first; fall back to every line when there's no title or it's unreadable
   let matches = title ? matchName([title]) : [];
   if (!matches.length || matches[0][1] < 0.85) matches = matchName(lines);
-  const bad = unsupported(title, lines, !!matches.length && matches[0][1] >= 0.85 && (!title || similarity(norm(title), matches[0][0].names[0]) >= 0.85 || matches[0][0].kind === 'base'));
+  // runewords and whole sets are only ever the title: "+2 To Strength" isn't the runeword Strength
+  if (ti >= 0) matches = matches.filter(([c, , at]) => (c.kind !== 'runeword' && c.kind !== 'fullset') || at === ti);
+  const bad = unsupported(title);
   if (bad) return { tags, errors: [...errors, bad], warnings, confidence: 0, age };
+  // magic, rare and crafted items: tagged so, named for a crafting recipe, or titled with a plain base name
+  // ("Amulet", "Celtic Knot Grand Charm") that isn't a unique, set item, runeword or runeword base
+  const titled = !!matches.length && matches[0][1] >= 0.85 && (!title || similarity(norm(title), matches[0][0].names[0]) >= 0.85);
+  const affixed = readAffixListing(title, lines, titled);
+  if (affixed) return { tags, item: affixed.item, errors: [...errors, ...affixed.errors], warnings: [...warnings, ...affixed.warnings], confidence: affixed.item ? 1 : 0, age };
   if (!matches.length) return { tags, errors: [...errors, "Couldn't recognise the item on this listing."], warnings, confidence: 0, age };
   if (titleQty !== undefined) matches = matches.map(([c, sc]) => [c, sc, ti] as [Candidate, number, number]);
 
@@ -611,6 +1044,7 @@ function readListingItem(rawLines: string[]): ListingResult {
       item = { kind: c.kind, id: c.ref as number, name, rolls: r.rolls, ethereal, defense: templateDefense(c.kind, c.ref as number, lines, r.rolls, ethereal, warn, err) };
     } else if (c.kind === 'base') item = readBase(c.ref as string, lines, warn, err);
     else if (c.kind === 'fullset') item = readFullSet(c.ref as string, lines, warn, err);
+    else if (c.kind === 'runeword') item = readRuneword(c.ref as number, lines, warn, err);
     else item = { ...c.item()!, quantity: titleQty ?? quantityOn(lines, at) } as ListingItem;
     const s = score + fit;
     if (!best || s > best.score + 1e-9) best = { item: item!, warn, err, score: s };

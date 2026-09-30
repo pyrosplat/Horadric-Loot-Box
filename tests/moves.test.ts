@@ -1004,3 +1004,131 @@ describe('the Trade button', () => {
     expect(store.panes[1].docId).toBe(TRADE_ID);
   });
 });
+
+describe('runewords, magic, rare and crafted items', () => {
+  const fixture = (f: string) => new Uint8Array(fs.readFileSync(`${__dirname}/fixtures/${f}`));
+  const realItems = () => [
+    ...['ChaosSC.d2s', 'Roka.d2s', 'Soska.d2s'].flatMap((f) => (parseCharacter(fixture(f)) as D2Character).items),
+    ...parseStash(fixture('SharedStashSoftCoreV2.d2i')).tabs.flatMap((t) => t.items),
+  ];
+
+  test('runewords match real ones: flag, id, runes in the sockets and the same stats', async () => {
+    const { createRunewordItem, RUNEWORD_ID_OFFSET, statDef } = await import('../src/core');
+    const real = realItems().filter((i) => i.runeword && i.runewordId !== undefined);
+    expect(real.length).toBeGreaterThan(2);
+    const names = new Set<string>();
+    for (const r of real) {
+      const row = r.runewordId! - RUNEWORD_ID_OFFSET;
+      const rw = GD.runewords.find((x) => x.row === row);
+      if (!rw) continue;
+      const ours = createRunewordItem(row, r.code, {}, { ethereal: r.ethereal });
+      const shape = (i: D2Item) => [i.flags >>> 0, i.runewordId, i.sockets.map((c) => c.code).join(), i.runewordStats.map((s) => `${statDef(s.id).key}:${s.param}`).sort().join(' ')];
+      expect(shape(ours), rw.name).toEqual(shape(r));
+      names.add(rw.name);
+    }
+    expect([...names]).toEqual(expect.arrayContaining(['Spirit']));
+  });
+
+  test('magic and rare items match real drops: same affixes, stats and defense', async () => {
+    const { createAffixItem, propStatsAt, statDef, affixRows } = await import('../src/core');
+    // each affix's rolled value, from the real item's stats
+    const valuesOf = (mods: [string, string, number, number][], real: D2Item) =>
+      mods.map(([code, param, min, max]) => {
+        for (let v = Math.min(min, max); v <= Math.max(min, max); v++) {
+          const st = propStatsAt(code, param, min, max, v).stats;
+          if (st.length && st.every((s) => real.stats.some((x) => x.id === s.id && x.param === s.param && x.value >= s.value))) {
+            if (st.every((s) => real.stats.some((x) => x.id === s.id && x.param === s.param && x.value === s.value))) return v;
+          }
+        }
+        return Math.max(min, max);
+      });
+    // (defense aside: real drops with Enhanced Defense store the top + 1 mostly, but not always; see below)
+    const key = (i: D2Item) => [i.code, i.quality, i.prefixes.join(), i.suffixes.join(), i.ethereal, i.maxDurability, i.stats.map((s) => `${statDef(s.id).key}${s.param}=${s.value}`).sort().join(' ')].join('|');
+    const picked = realItems().filter((i) => (i.quality === Quality.Magic || i.quality === Quality.Rare) && !i.autoAffix);
+    let n = 0;
+    for (const r of picked) {
+      if (r.prefixes.some((id) => !GD.affixes.prefix[id]) || r.suffixes.some((id) => !GD.affixes.suffix[id])) continue; // editor-made (id 2047)
+      const side = (s: 'prefix' | 'suffix') => (s === 'prefix' ? r.prefixes : r.suffixes).filter(Boolean).map((row) => ({ side: s, row, values: valuesOf(GD.affixes[s][row].mods, r) }));
+      const affixes = [...side('prefix'), ...side('suffix')];
+      // editor-made items carry affixes their base can't roll (a "Scintillating" small charm)
+      if (affixes.some((a) => !affixRows(a.side, r.code, r.quality === Quality.Magic ? 'magic' : 'rare').includes(a.row))) continue;
+      // affixes on the same stat add up: only single-affix-per-stat items compare exactly
+      const ids = affixes.flatMap((a) => GD.affixes[a.side][a.row].mods.map((m) => m[0]));
+      if (new Set(ids).size !== ids.length) continue;
+      // and items with stats no affix explains (a 40% ED "Jewel of Fervor" with no prefix) aren't plain drops
+      const explained = new Set(affixes.flatMap((a) => GD.affixes[a.side][a.row].mods.flatMap(([c, p, lo, hi]) => propStatsAt(c, p, lo, hi, hi).stats.map((x) => x.id))));
+      if (r.stats.some((x) => !explained.has(x.id))) continue;
+      const ours = createAffixItem(r.code, { quality: r.quality === Quality.Magic ? 'magic' : 'rare', affixes, defense: r.defense, itemLevel: r.itemLevel, ethereal: r.ethereal });
+      // with Enhanced Defense: the top + 1, like Roka's Strong Heavy Boots (7, top 6) and an ethereal rare Helm (28 = 19 × 1.5)
+      if (ours.stats.some((x) => x.id === 16)) expect(ours.defense).toBe(r.ethereal ? Math.floor((GD.items[r.code].maxAc! + 1) * 1.5) : GD.items[r.code].maxAc! + 1);
+      expect(key(ours), `${r.code} ${r.prefixes} ${r.suffixes}`).toBe(key(r));
+      n++;
+    }
+    expect(n).toBeGreaterThanOrEqual(4);
+  });
+
+  test('crafted items: the recipe’s base and mods, up to 4 affixes, rare-only affixes', async () => {
+    const { createAffixItem, craftIndex, craftBases, affixRows, describeItem } = await import('../src/core');
+    const blood = craftIndex('Blood Gloves');
+    expect(craftBases(blood)).toEqual(['vgl', 'xvg', 'uvg']);
+    const row = (side: 'prefix' | 'suffix', name: string) => affixRows(side, 'uvg', 'rare').find((r) => GD.affixes[side][r].name === name)!;
+    const affixes = [
+      { side: 'suffix' as const, row: row('suffix', 'of Alacrity'), values: [20] },
+      { side: 'prefix' as const, row: row('prefix', 'Holy'), values: [86] },
+      { side: 'suffix' as const, row: row('suffix', 'of Precision'), values: [13] },
+      { side: 'suffix' as const, row: row('suffix', 'of Fortune'), values: [19] },
+    ];
+    const it = createAffixItem('uvg', { quality: 'crafted', affixes, craft: { row: blood, values: [2, 17, 10] } });
+    expect(it.quality).toBe(Quality.Crafted);
+    expect(describeItem(it).lines.map((l) => l.text)).toEqual(expect.arrayContaining(['Defense: 122', '2% Life stolen per hit', '+17 to Life', '+10% Chance of Crushing Blow', '+86% Enhanced Defense']));
+    expect(() => createAffixItem('uar', { quality: 'crafted', affixes, craft: { row: blood, values: [2, 17, 10] } })).toThrow(/can't be crafted from/);
+    expect(() => createAffixItem('uvg', { quality: 'crafted', affixes: [...affixes, { side: 'prefix', row: row('prefix', 'Bronze'), values: [15] }], craft: { row: blood, values: [2, 17, 10] } })).toThrow(/at most 4/);
+    expect(() => createAffixItem('uvg', { quality: 'crafted', affixes, craft: { row: blood, values: [4, 17, 10] } })).toThrow(/outside/);
+    // magic-only affixes (Forbidden: +3 Eldritch Skills) never roll on rares
+    const forbidden = GD.affixes.prefix.findIndex((a) => a.name === 'Forbidden');
+    expect(affixRows('prefix', 'amu', 'magic')).toContain(forbidden);
+    expect(affixRows('prefix', 'amu', 'rare')).not.toContain(forbidden);
+    expect(() => createAffixItem('amu', { quality: 'rare', affixes: [{ side: 'prefix', row: forbidden, values: [3] }] })).toThrow(/can't roll/);
+    expect(() => createAffixItem('amu', { quality: 'magic', affixes: [{ side: 'prefix', row: forbidden, values: [3] }, { side: 'prefix', row: forbidden - 1, values: [2] }] })).toThrow(/at most 1 prefix/);
+  });
+
+  test('trading for a runeword and a crafted item: both land in Received and save like any item', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    const { createRunewordItem, createAffixItem, craftIndex, affixRows } = await import('../src/core');
+    const sid = 't/ModernSharedStashSoftCoreV2.d2i';
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    const cta = GD.runewords.find((r) => r.name === 'Call to Arms')!.row;
+    const blood = craftIndex('Blood Gloves');
+    const holy = affixRows('prefix', 'uvg', 'rare').find((r) => GD.affixes.prefix[r].name === 'Holy')!;
+    const gloves = createAffixItem('uvg', { quality: 'crafted', affixes: [{ side: 'prefix', row: holy, values: [90] }], craft: { row: blood, values: [3, 20, 10] } });
+    store.tradeSetListing({
+      name: 'Call to Arms',
+      mode: 'softcore',
+      ask: [[{ code: 'r22', qty: 1, name: 'Um Rune' }]],
+      items: [
+        { kind: 'runeword', id: cta, name: 'Call to Arms (Crystal Sword)', item: createRunewordItem(cta, 'crs') },
+        { kind: 'crafted', id: GD.items.uvg.index, name: 'Blood Gloves', item: gloves },
+      ],
+    });
+    store.tradeOffer('r22', 1);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.tradeReceived.map((i) => [i.code, i.quality, i.runeword, i.sockets.length])).toEqual([
+      ['crs', Quality.Normal, true, 5],
+      ['uvg', Quality.Crafted, false, 0],
+    ]);
+    store.tradeDeliverAll();
+    expect(store.tradeReceived.length).toBe(0);
+    const all = (roundTrip(modern()) as D2SharedStash).tabs.flatMap((t) => t.items);
+    expect(all.some((i) => i.code === 'crs' && i.runeword && i.sockets.map((c) => c.code).join() === 'r11,r08,r23,r24,r27')).toBe(true);
+    expect(all.some((i) => i.code === 'uvg' && i.quality === Quality.Crafted)).toBe(true);
+  });
+
+  test('skill tab bonuses are stored the way the game does (class × 8 + tab)', async () => {
+    const { createAffixItem, describeItem } = await import('../src/core');
+    const forbidden = GD.affixes.prefix.findIndex((a) => a.name === 'Forbidden');
+    const it = createAffixItem('amu', { quality: 'magic', affixes: [{ side: 'prefix', row: forbidden, values: [3] }] });
+    expect(it.stats.find((s) => s.id === 188)?.param).toBe(7 * 8 + 1);
+    expect(describeItem(it).lines.map((l) => l.text)).toContain('+3 to Eldritch Skills (Warlock Only)');
+  });
+});

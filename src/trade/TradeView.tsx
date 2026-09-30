@@ -13,6 +13,8 @@ const UBER_SHORT: Record<string, string> = {
   pk1: 'Terror', pk2: 'Hate', pk3: 'Destruction', dhn: 'Horn', bey: 'Eye', mbr: 'Brain', toa: 'Token',
   tes: 'Twisted', ceh: 'Charged', bet: 'Burning', fed: 'Festering', xa1: 'West', xa2: 'East', xa3: 'South', xa4: 'Deep', xa5: 'North',
 };
+/** Tile label colours by quality (magic, set, rare, unique, crafted). */
+const QUALITY_TEXT: Record<number, string> = { 4: 'text-q-magic', 5: 'text-q-set', 6: 'text-q-rare', 7: 'text-q-unique', 8: 'text-q-crafted' };
 const short = (code: string) => UBER_SHORT[code] ?? nameOf(code).replace(/ Rune$/, '');
 
 /** Items you traded for, waiting to be dragged into a stash, character or vault. */
@@ -57,7 +59,7 @@ function Received() {
                   className="relative flex w-[56px] cursor-grab flex-col items-center rounded-[3px] border border-emerald-700/70 bg-ink-900 px-0.5 pb-0.5 pt-1 active:cursor-grabbing"
                 >
                   <ItemThumb item={it} size={32} />
-                  <span className={`mt-0.5 w-full truncate text-center text-[9px] ${it.compact || it.quality === 2 ? 'text-ink-200' : it.quality === 5 ? 'text-q-set' : 'text-q-unique'}`}>{label}</span>
+                  <span className={`mt-0.5 w-full truncate text-center text-[9px] ${it.runeword ? 'text-q-runeword' : QUALITY_TEXT[it.compact ? 2 : it.quality] ?? 'text-ink-200'}`}>{label}</span>
                   {list.length > 1 && <span className="absolute right-0.5 top-0 rounded bg-black/80 px-1 text-[9px] font-bold text-white">×{list.length}</span>}
                 </div>
               );

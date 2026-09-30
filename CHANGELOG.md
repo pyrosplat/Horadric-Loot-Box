@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.1
+
+**Trading: more items**
+
+- Runewords, magic, rare and crafted items can now be traded.
+- Magic and rare items are checked against the affixes their base can really roll. Crafted items are made exactly as listed.
+- Listings with an OR now drop the option you can't pay with (like a Random Minor Key) and let you pay the other.
+- Better screenshot reading: smaller screenshots, stats run together ("+31Tolife") and stat names that look like runeword names.
+- Fixed skill tab bonuses ("+3 to Eldritch Skills") being saved to the wrong tab.
+
 ## 2.0.0
 
 **New Single Player Trading Support**

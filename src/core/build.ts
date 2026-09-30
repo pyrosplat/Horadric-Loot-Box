@@ -1,7 +1,7 @@
-import { BitWriter } from './bits';
+import { BitWriter, concatBytes } from './bits';
 import { encodeItemCode } from './huffman';
 import { GD, isType, itemDef, statByName, statDef, type PropDef } from './gamedata';
-import { ItemFlag, ItemMode, PAIRED, Quality, StorePage, parseItemBytes, type D2Item, type ItemStat } from './item';
+import { ItemFlag, ItemMode, PAIRED, Quality, StorePage, createCompactItem, itemBytes, parseItemBytes, withPlacement, type D2Item, type ItemStat } from './item';
 import { propDefs, propLines, propStatsAt, skillId } from './describe';
 
 /**
@@ -100,7 +100,7 @@ function slotFor(key: string, pieces: number, prop: PropDef, baseCode: string): 
     return { ...base, label: lo === hi ? `Sockets: ${lo}` : `Sockets: ${lo}\u2013${hi}`, kind: 'sockets', lo, hi, variable: lo !== hi };
   }
   // chance-to-cast, charges, per-level and elemental ranges use min/max as two separate fixed numbers
-  const fixedPair = funcs.some((f) => f === 11 || f === 15 || f === 16 || f === 17 || f === 19);
+  const fixedPair = funcs.some((f) => f === 11 || f === 15 || f === 16 || f === 19) || (funcs.includes(17) && (funcs.length > 1 || !!Number(prop[1])));
   const lo = Math.min(min, max), hi = Math.max(min, max);
   return { ...base, kind: 'value', lo, hi, variable: !fixedPair && lo !== hi };
 }
@@ -245,6 +245,12 @@ interface Encode {
   superiorId?: number;
   /** automagic.txt row, for an automatic mod. */
   autoRow?: number;
+  /** Magic items: magicprefix.txt / magicsuffix.txt rows (0 = none). */
+  magic?: { prefix: number; suffix: number };
+  /** Rare and crafted items: the two name parts and up to 3 prefixes and 3 suffixes (0 = none). */
+  rare?: { names: [number, number]; prefixes: number[]; suffixes: number[] };
+  /** Runewords: the runeword id and its stat list, and the runes that go in the sockets (in order). */
+  runeword?: { id: number; stats: ItemStat[]; runes: string[] };
   /** Unique or set row, for those qualities. */
   rowId?: number;
   ethereal: boolean;
@@ -267,6 +273,7 @@ function encodeFull(e: Encode): D2Item {
   let flags = ItemFlag.Identified | 0x00800000;
   if (e.sockets) flags |= ItemFlag.Socketed;
   if (e.ethereal) flags |= ItemFlag.Ethereal;
+  if (e.runeword) flags |= ItemFlag.Runeword;
   w.writeU32(flags >>> 0);
   w.writeBits(1, 1); // format version 101
   w.writeBits(2, 2);
@@ -277,7 +284,7 @@ function encodeFull(e: Encode): D2Item {
   w.writeBits(StorePage.Inventory + 1, 3);
   encodeItemCode(w, e.code);
 
-  w.writeBits(0, 3); // nothing socketed
+  w.writeBits(e.runeword?.runes.length ?? 0, 3); // socketed children that follow the item
   let uid = 0;
   while (!uid) uid = (Math.random() * 0x100000000) >>> 0;
   w.writeU32(uid);
@@ -294,7 +301,21 @@ function encodeFull(e: Encode): D2Item {
   } else w.writeBits(0, 1);
   if (e.quality === Quality.Unique || e.quality === Quality.Set) w.writeBits(e.rowId ?? 0, 12);
   else if (e.quality === Quality.Superior) w.writeBits(e.superiorId ?? 0, 3);
-  else if (e.quality !== Quality.Normal || /[CBS]/.test(def.flags)) throw new Error(`Can't build a ${def.name} of this quality yet`);
+  else if (e.quality === Quality.Magic) {
+    w.writeBits(e.magic?.prefix ?? 0, 11);
+    w.writeBits(e.magic?.suffix ?? 0, 11);
+  } else if (e.quality === Quality.Rare || e.quality === Quality.Crafted) {
+    const r = e.rare ?? { names: [0, 0], prefixes: [], suffixes: [] };
+    w.writeBits(r.names[0], 8);
+    w.writeBits(r.names[1], 8);
+    for (let i = 0; i < 3; i++) {
+      for (const id of [r.prefixes[i] ?? 0, r.suffixes[i] ?? 0]) {
+        w.writeBits(id ? 1 : 0, 1);
+        if (id) w.writeBits(id, 11);
+      }
+    }
+  } else if (e.quality !== Quality.Normal || /[CBS]/.test(def.flags)) throw new Error(`Can't build a ${def.name} of this quality yet`);
+  if (e.runeword) w.writeBits(e.runeword.id, 16);
   w.writeBits(0, 1); // no realm data
 
   const dur = () => {
@@ -323,10 +344,13 @@ function encodeFull(e: Encode): D2Item {
 
   writeStatList(w, e.stats);
   for (let i = 0; i < 5; i++) if (setMask & (1 << i)) writeStatList(w, e.bonus![i]!);
+  if (e.runeword) writeStatList(w, e.runeword.stats);
   w.writeBits(0, 1); // not an advanced-stash stack
   w.alignToByte();
 
-  const item = parseItemBytes(w.toBytes(), e.saveVersion);
+  // the runes follow the item, each placed in its socket (mode 6, x = socket number, no page)
+  const children = (e.runeword?.runes ?? []).map((code, i) => itemBytes(withPlacement(createCompactItem(code, e.saveVersion), { mode: ItemMode.Socketed, page: StorePage.None, x: i, y: 0 })));
+  const item = parseItemBytes(concatBytes([w.toBytes(), ...children]), e.saveVersion);
   const ok =
     item.code === e.code &&
     !item.compact &&
@@ -338,7 +362,14 @@ function encodeFull(e: Encode): D2Item {
     item.socketCount === e.sockets &&
     item.ethereal === e.ethereal &&
     item.advBit !== undefined &&
-    item.advancedStackSize === undefined;
+    item.advancedStackSize === undefined &&
+    item.runeword === !!e.runeword &&
+    (!e.runeword || (item.runewordId === e.runeword.id && item.sockets.map((c) => c.code).join() === e.runeword.runes.join())) &&
+    (e.quality !== Quality.Magic || (item.prefixes[0] === (e.magic?.prefix ?? 0) && item.suffixes[0] === (e.magic?.suffix ?? 0))) &&
+    (!e.rare ||
+      (item.rareName?.join() === e.rare.names.join() &&
+        item.prefixes.join() === [0, 1, 2].map((i) => e.rare!.prefixes[i] ?? 0).join() &&
+        item.suffixes.join() === [0, 1, 2].map((i) => e.rare!.suffixes[i] ?? 0).join()));
   if (!ok) throw new Error(`Building ${def.name} did not verify`);
   return item;
 }
@@ -502,6 +533,10 @@ function modStats(pick: ModPick, mods: PropDef[], what: string): ItemStat[] {
 
 /** Builds a plain, normal-quality weapon or armor base with empty sockets (grey when socketed, like a drop). */
 export function createBaseItem(code: string, opts: BaseOptions = {}): D2Item {
+  return encodeBase(code, opts);
+}
+
+function encodeBase(code: string, opts: BaseOptions, runeword?: Encode['runeword']): D2Item {
   const def = itemDef(code);
   if (!def || !buildableBases().some((b) => b.code === code)) throw new Error(`${def?.name ?? code} can't be built as a base`);
   const max = maxBaseSockets(code);
@@ -544,9 +579,50 @@ export function createBaseItem(code: string, opts: BaseOptions = {}): D2Item {
     sockets,
     defense,
     stats,
+    runeword,
     itemLevel: opts.itemLevel ?? defaultLevel(code),
     saveVersion: opts.saveVersion ?? 105,
   });
+}
+
+// ---------------------------------------------------------------- runewords
+
+/** The save's runeword id is the runes.txt row plus this (real saves: Call to Arms, row 12, is 20519). */
+export const RUNEWORD_ID_OFFSET = 20507;
+
+/** Runewords that can be made in this version of the game (complete rows), by name. */
+export function buildableRunewords(): { row: number; name: string; runes: string[] }[] {
+  return GD.runewords.filter((r) => r.complete && r.runes.length && r.props.every(([c]) => propDefs(c).length)).map((r) => ({ row: r.row, name: r.name, runes: r.runes }));
+}
+
+/** A runeword's own properties with their possible rolls (like `rollSlots` for uniques). */
+export function runewordSlots(row: number): RollSlot[] {
+  const rw = GD.runewords.find((r) => r.row === row);
+  return rw ? rw.props.map((p, i) => slotFor(`r${i}`, 0, p, '')) : [];
+}
+
+/** Why a runeword can't be made in this base, or undefined if it can. */
+export function runewordBaseProblem(row: number, code: string): string | undefined {
+  const rw = GD.runewords.find((r) => r.row === row);
+  const def = itemDef(code);
+  if (!rw || !def) return 'Unknown runeword or base';
+  if (!rw.itypes.some((t) => isType(code, t))) return `${rw.name} can't be made in a ${def.name}.`;
+  if (maxBaseSockets(code) < rw.runes.length) return `A ${def.name} can't have the ${rw.runes.length} sockets ${rw.name} needs.`;
+  return undefined;
+}
+
+/**
+ * Builds a runeword: the base (plain or superior, maybe ethereal) with its runes in the sockets and the runeword's
+ * own stats at the given rolls (missing ones perfect). Checked against the base and parsed back, like any item.
+ */
+export function createRunewordItem(row: number, code: string, rolls: Rolls = {}, opts: BaseOptions = {}): D2Item {
+  const rw = GD.runewords.find((r) => r.row === row);
+  if (!rw || !buildableRunewords().some((r) => r.row === row)) throw new Error("That runeword can't be built");
+  const problem = runewordBaseProblem(row, code);
+  if (problem) throw new Error(problem);
+  const built: Built = { stats: [], sockets: 0, ethereal: false };
+  for (const s of runewordSlots(row)) statsForSlot(s, rolls, built);
+  return encodeBase(code, { ...opts, sockets: rw.runes.length }, { id: RUNEWORD_ID_OFFSET + row, stats: built.stats, runes: rw.runes });
 }
 
 // ---------------------------------------------------------------- uber keys, organs and other uber items
@@ -563,4 +639,141 @@ export function createUberItem(code: string, opts: BuildOptions = {}): D2Item {
   const def = itemDef(code);
   if (!def || !isUberCode(code)) throw new Error(`${def?.name ?? code} isn't an uber item`);
   return encodeFull({ code, quality: Quality.Normal, ethereal: false, sockets: 0, stats: [], itemLevel: opts.itemLevel ?? defaultLevel(code), saveVersion: opts.saveVersion ?? 105 });
+}
+
+// ---------------------------------------------------------------- magic, rare and crafted items
+
+export type AffixSide = 'prefix' | 'suffix';
+export type AffixQuality = 'magic' | 'rare' | 'crafted';
+
+/** One magic prefix or suffix on an item and the value rolled for each of its properties. */
+export interface AffixPick extends ModPick {
+  side: AffixSide;
+}
+
+const fitsTypes = (code: string, itypes: string[], etypes: string[]) => itypes.some((t) => isType(code, t)) && !etypes.some((t) => isType(code, t));
+
+/** Whether an item can have magic, rare or crafted quality at all (weapons, armor, jewelry, charms, jewels). */
+export function canHaveAffixes(code: string): boolean {
+  const def = itemDef(code);
+  if (!def || def.quest || def.stackable || /[RgB]/.test(def.flags)) return false;
+  return def.kind !== 'misc' || ['amul', 'ring', 'jewl', 'char'].some((t) => isType(code, t));
+}
+
+/** Prefix or suffix rows that can roll on this base (rare and crafted items only use the rows marked for them). */
+export function affixRows(side: AffixSide, code: string, quality: AffixQuality = 'magic'): number[] {
+  const rows = GD.affixes[side];
+  const out: number[] = [];
+  rows.forEach((a, i) => {
+    if (i && a.spawnable && (quality === 'magic' || a.rare) && a.mods.length && fitsTypes(code, a.itypes, a.etypes)) out.push(i);
+  });
+  return out;
+}
+
+/** The crafting recipe index for a crafted item's name ("Blood Gloves"), or -1. */
+export const craftIndex = (name: string) => GD.crafts.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
+
+/** The bases a crafting recipe takes: one base (and its exceptional and elite versions) or every base of a type. */
+export function craftBases(recipe: number): string[] {
+  const c = GD.crafts[recipe];
+  if (!c) return [];
+  if (GD.items[c.input]) return c.upgraded ? GD.items[c.input].tiers ?? [c.input] : [c.input];
+  return GD.itemOrder.filter((code, i, all) => all.indexOf(code) === i && isType(code, c.input) && canHaveAffixes(code));
+}
+
+export interface AffixItemOptions extends BuildOptions {
+  quality: AffixQuality;
+  affixes: AffixPick[];
+  /** Crafted items: the recipe (see `craftIndex`) and the value of each of its mods. */
+  craft?: ModPick;
+  /** An automatic mod (class items). */
+  auto?: ModPick;
+  sockets?: number;
+  /** Crafted items only: exactly these stats, as a listing shows them (no affix, recipe or range checks). */
+  exactStats?: ItemStat[];
+}
+
+const pickOne = <T>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+
+/**
+ * Builds a magic (1 prefix and/or 1 suffix), rare (up to 3 + 3) or crafted item (a recipe's mods plus up to 4
+ * affixes). Every affix is checked against the base and its value against its range; rare names are picked at
+ * random from the ones that fit the base. Armor with Enhanced Defense gets the base's top defense + 1, like a drop.
+ */
+export function createAffixItem(code: string, opts: AffixItemOptions): D2Item {
+  const def = itemDef(code);
+  if (!def || !canHaveAffixes(code)) throw new Error(`${def?.name ?? code} can't be magic, rare or crafted`);
+  const q = opts.quality;
+  const per = { prefix: 0, suffix: 0 };
+  const groups = new Set<string>();
+  const stats: ItemStat[] = [];
+  if (opts.exactStats && q !== 'crafted') throw new Error('Only crafted items are made with exact stats');
+  if (opts.exactStats) stats.push(...opts.exactStats);
+  else if (q === 'crafted') {
+    const c = opts.craft && GD.crafts[opts.craft.row];
+    if (!c) throw new Error('A crafted item needs its recipe');
+    if (!craftBases(opts.craft!.row).includes(code)) throw new Error(`${c.name} can't be crafted from a ${def.name}`);
+    stats.push(...modStats(opts.craft!, c.mods, c.name));
+  }
+  let lo = 1, hi = 99;
+  for (const a of opts.affixes) {
+    const row = GD.affixes[a.side][a.row];
+    if (!row || !affixRows(a.side, code, q).includes(a.row)) throw new Error(`${def.name} can't roll ${row?.name || 'that affix'}${q === 'magic' ? '' : ` as a ${q} item`}`);
+    per[a.side]++;
+    const g = `${a.side}:${row.group}`;
+    if (q !== 'magic' && groups.has(g)) throw new Error(`${row.name} can't roll together with a similar ${a.side}`);
+    groups.add(g);
+    lo = Math.max(lo, row.level);
+    if (row.maxLevel) hi = Math.min(hi, row.maxLevel);
+    stats.push(...modStats(a, row.mods, row.name || a.side));
+  }
+  const total = per.prefix + per.suffix;
+  const maxSide = q === 'magic' ? 1 : 3;
+  if (per.prefix > maxSide || per.suffix > maxSide) throw new Error(`A ${q} item has at most ${maxSide} prefix${maxSide > 1 ? 'es' : ''} and ${maxSide} suffix${maxSide > 1 ? 'es' : ''}`);
+  const maxTotal = q === 'crafted' ? 4 : q === 'rare' && isType(code, 'jewl') ? 4 : 6;
+  if (total > maxTotal) throw new Error(`A ${q} ${def.name} has at most ${maxTotal} affixes`);
+  if (q === 'magic' && !total) throw new Error('A magic item needs a prefix or a suffix');
+  if (lo > hi) throw new Error("Those affixes can't roll on the same item");
+  if (opts.auto) {
+    if (!autoRows(code).includes(opts.auto.row)) throw new Error(`${def.name} can't roll ${GD.automagic[opts.auto.row]?.name ?? 'that mod'}`);
+    stats.push(...modStats(opts.auto, GD.automagic[opts.auto.row].mods, GD.automagic[opts.auto.row].name));
+  }
+  const sockets = opts.sockets ?? 0;
+  if (sockets < 0 || sockets > maxBaseSockets(code)) throw new Error(`${def.name} can have 0–${maxBaseSockets(code)} sockets`);
+  if (opts.ethereal && !canBuildEthereal('base', code)) throw new Error(`${def.name} can't be ethereal`);
+
+  let defense: number | undefined;
+  if (def.flags.includes('A')) {
+    const dlo = def.minAc ?? 0, dhi = def.maxAc ?? dlo;
+    const ed = stats.some((s) => s.id === statByName('item_armor_percent')?.id);
+    // with Enhanced Defense a magic or rare drop stores the top defense plus one (real Heavy Boots: 7, top 6)
+    defense = ed ? dhi + 1 : opts.defense ?? dlo + Math.floor(Math.random() * (dhi - dlo + 1));
+    if (!ed && (defense < dlo || defense > dhi)) throw new Error(`${def.name} defense is ${dlo}–${dhi}`);
+  }
+  let rare: Encode['rare'];
+  if (q !== 'magic') {
+    const fits = (i: number) => {
+      const f = GD.rareNameFits[i];
+      return !!GD.rareNames[i] && !!f && fitsTypes(code, f.itypes, f.etypes);
+    };
+    const idx = GD.rareNames.map((_, i) => i);
+    const first = idx.filter((i) => i >= GD.rarePrefixStart && fits(i));
+    const second = idx.filter((i) => i > 0 && i < GD.rarePrefixStart && fits(i));
+    const side = (s: AffixSide) => opts.affixes.filter((a) => a.side === s).map((a) => a.row);
+    rare = { names: [first.length ? pickOne(first) : 0, second.length ? pickOne(second) : 0], prefixes: side('prefix'), suffixes: side('suffix') };
+  }
+  const magic = q === 'magic' ? { prefix: opts.affixes.find((a) => a.side === 'prefix')?.row ?? 0, suffix: opts.affixes.find((a) => a.side === 'suffix')?.row ?? 0 } : undefined;
+  return encodeFull({
+    code,
+    quality: q === 'magic' ? Quality.Magic : q === 'rare' ? Quality.Rare : Quality.Crafted,
+    magic,
+    rare,
+    autoRow: opts.auto?.row,
+    ethereal: !!opts.ethereal,
+    sockets,
+    defense,
+    stats,
+    itemLevel: opts.itemLevel ?? Math.min(hi, Math.max(lo, defaultLevel(code))),
+    saveVersion: opts.saveVersion ?? 105,
+  });
 }

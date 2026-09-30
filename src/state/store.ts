@@ -140,8 +140,8 @@ export function savedSettings(): Partial<Settings> {
 /** A unique or set item wanted in a trade, already built with its rolls (so the tooltip shows exactly what you get). */
 export interface TradeWantItem {
   key: string;
-  kind: 'unique' | 'set' | 'base';
-  /** Unique or set row, or the base's item index. */
+  kind: 'unique' | 'set' | 'base' | 'runeword' | 'magic' | 'rare' | 'crafted';
+  /** Unique, set or runeword row, or the base's item index. */
   id: number;
   name: string;
   item: D2Item;
