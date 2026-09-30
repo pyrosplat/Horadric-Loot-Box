@@ -5,6 +5,7 @@ src-tauri/target/
 src-tauri/gen/
 *.tsbuildinfo
 coverage/
+RELEASING.md
 
 # local scratch and logs
 scratch/
