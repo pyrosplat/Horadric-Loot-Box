@@ -1,5 +1,5 @@
 import { BitReader, BitWriter, concatBytes, readBitsAt, writeBitsAt } from './bits';
-import { decodeItemCode } from './huffman';
+import { decodeItemCode, encodeItemCode } from './huffman';
 import { GD, itemDef, statDef, type ItemDef } from './gamedata';
 
 export const ItemFlag = {
@@ -124,7 +124,7 @@ export interface D2Item {
 const MODE_BIT = 35;
 const LOC_BIT = 38;
 
-const PAIRED: Record<number, number[]> = {
+export const PAIRED: Record<number, number[]> = {
   17: [18], // max damage% -> min damage%
   48: [49], // fire min/max
   50: [51], // lightning min/max
@@ -457,6 +457,36 @@ export function withNewId(item: D2Item): D2Item {
   const out = parseItemBytes(concatBytes([raw, ...item.sockets.map(itemBytes)]), item.saveVersion);
   if (out.id !== id) throw new Error('Item id change did not verify');
   return out;
+}
+
+/** Flags D2R writes on runes and gems (identified, compact, plus a flag the game always sets on them). */
+const COMPACT_FLAGS = ItemFlag.Identified | ItemFlag.CompactSave | 0x00800000;
+
+/**
+ * Builds a new compact item (a rune or gem) from scratch for a v105 save, in the inventory at 0,0 (use
+ * `withPlacement` / `withStackSize` to put it somewhere). The result is parsed back to prove it is valid.
+ */
+export function createCompactItem(code: string, saveVersion = 105): D2Item {
+  const def = itemDef(code);
+  if (!def) throw new Error(`Unknown item code '${code}'`);
+  if (!def.compact || !(def.flags.includes('R') || def.flags.includes('g'))) throw new Error(`${def.name} can't be created yet (only runes and gems).`);
+  if (saveVersion < 105) throw new Error('Items can only be created for Reign of the Warlock saves (v105).');
+  const w = new BitWriter(16);
+  w.writeU32(COMPACT_FLAGS);
+  w.writeBits(1, 1); // format version 101: high bit + 2
+  w.writeBits(2, 2);
+  w.writeBits(ItemMode.Stored, 3);
+  w.writeBits(0, 4); // body location
+  w.writeBits(0, 4); // x
+  w.writeBits(0, 4); // y
+  w.writeBits(StorePage.Inventory + 1, 3);
+  encodeItemCode(w, code);
+  w.writeBits(0, 1); // no realm data
+  w.writeBits(0, 1); // not an advanced-stash stack
+  w.alignToByte();
+  const item = parseItemBytes(w.toBytes(), saveVersion);
+  if (item.code !== code || !item.compact || item.advBit === undefined) throw new Error(`Building ${def.name} did not verify`);
+  return item;
 }
 
 /** Inventory footprint in cells. */

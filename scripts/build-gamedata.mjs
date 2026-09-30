@@ -78,6 +78,8 @@ for (const r of typeRows) {
     throwable: r.Throwable === '1',
     beltable: r.Beltable === '1' || undefined,
     maxSockets: [int(r.MaxSockets1), int(r.MaxSockets2), int(r.MaxSockets3)],
+    // white and superior items of this type can roll up to 3 skills of this class (class code, e.g. 'sor')
+    staffMods: r.StaffMods || undefined,
   };
 }
 const ancestorsCache = {};
@@ -128,6 +130,8 @@ for (const [file, kind] of [['weapons', 'weapon'], ['armor', 'armor'], ['misc', 
       levelReq: int(r.levelreq),
       reqStr: int(r.reqstr),
       reqDex: int(r.reqdex),
+      // automagic.txt group this base rolls its automatic mod from (paladin shields: resistances or damage/AR)
+      autoPrefix: int(r['auto prefix']) || undefined,
       dur: int(r.durability),
       noDur: int(r.nodurability),
       minDam: int(r.mindam) || undefined,
@@ -252,6 +256,9 @@ for (const r of readTsv('skills')) {
     key: r.skill,
     name: desc ? str(desc['str name'], r.skill) : r.skill,
     cls: r.charclass ? classCodes.indexOf(r.charclass) : -1,
+    // skill tree tab (1-3), 0 for skills that aren't in a tree; and the level needed to learn it
+    page: desc ? int(desc.SkillPage) : 0,
+    reqLevel: int(r.reqlevel),
   };
 }
 
@@ -274,6 +281,25 @@ for (const r of readTsv('properties')) {
     .map((n) => ({ func: int(r[`func${n}`]), stat: r[`stat${n}`] || undefined, val: r[`val${n}`] || undefined }))
     .filter((f) => f.func);
 }
+
+// ---------- superior and automatic mods (plain white/grey bases) ----------
+// Superior mods: the save stores the row index in 3 bits; each row says which kinds of base it fits.
+const superior = readTsv('qualityitems').map((r) => ({
+  mods: propList(r, (i) => `mod${i}code`, (i) => `mod${i}param`, (i) => `mod${i}min`, (i) => `mod${i}max`, 2),
+  fits: ['armor', 'weapon', 'shield', 'scepter', 'wand', 'staff', 'bow', 'boots', 'gloves', 'belt'].filter((k) => r[k] === '1'),
+}));
+// Automatic mods: the save's 11-bit auto-affix field is the row index + 1 (a real magic Sacred Globe: 17 = "Snake's").
+const automagic = readTsv('automagic').map((r) => ({
+  name: str(r.Name, r.Name),
+  group: int(r.group),
+  spawnable: r.spawnable === '1',
+  level: int(r.level),
+  maxLevel: int(r.maxlevel) || undefined,
+  levelReq: int(r.levelreq),
+  mods: propList(r, (i) => `mod${i}code`, (i) => `mod${i}param`, (i) => `mod${i}min`, (i) => `mod${i}max`, 3),
+  itypes: [1, 2, 3, 4, 5, 6, 7].map((i) => r[`itype${i}`]).filter(Boolean),
+  etypes: [1, 2, 3, 4, 5].map((i) => r[`etype${i}`]).filter(Boolean),
+}));
 
 // ---------- mercenaries (hireling.txt; the save stores the Id, name index and experience) ----------
 const nameRange = (first, last) => {
@@ -327,7 +353,10 @@ const data = {
   magicSuffixReq,
   rareNames,
   classes,
+  classCodes,
   skills,
+  superior,
+  automagic,
   mercs,
   mercNames: nameLists,
   gems,

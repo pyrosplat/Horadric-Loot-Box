@@ -13,6 +13,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 - **Holy grail tabs** for uniques, sets, runewords, runes and gems. They count your whole account, match the game's Chronicle totals, and highlight runewords you can make.
 - **Stackables and gold:** a Stackables tab laid out like the game's, and gold transfers between characters, stashes and vaults.
 - **Game-style display:** character screen layout, real item tooltips, and item art from your own game files.
+- **Trade (optional, off by default):** paste a Traderie screenshot to trade for that item at the listing's price. It's read on your computer and checked (PC, Ladder, RotW, Softcore/Hardcore, posted in the last 3 days). Turn it on in Settings → Trade.
 - **Automatic updates** from GitHub releases (asks before installing).
 - **Safe saving:** backups before every change, each save checked before it's written, no saving while the game runs, and hardcore/softcore and editions never mix.
 

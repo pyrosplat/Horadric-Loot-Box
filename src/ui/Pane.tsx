@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import type { D2Item } from '../core';
-import { desc, docLabel } from '../state/store';
+import { TRADE_ID, desc, docLabel } from '../state/store';
 import { CharacterView } from './CharacterView';
 import { useStore, docDrag } from './context';
 import { StashView } from './StashView';
 import { VaultView } from './VaultView';
+
+// the optional Trade panel is loaded only when it's opened
+const TradeView = lazy(() => import('../trade/TradeView').then((m) => ({ default: m.TradeView })));
 
 export function Pane({ pane }: { pane: 0 | 1 }) {
   const store = useStore();
@@ -54,6 +57,7 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
           <option value="" disabled>
             Choose a file…
           </option>
+          {store.settings.tradeEnabled && <option value={TRADE_ID}>Trade</option>}
           {(['vault', 'stash', 'character'] as const).map((k) => (
             <optgroup key={k} label={k === 'vault' ? 'Vaults' : k === 'stash' ? 'Shared stashes' : 'Characters'}>
               {docs
@@ -83,7 +87,11 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
       </div>
       {entry && store.selection.docId === entry.id && store.selection.items.size > 0 && <SelectionBar docId={entry.id} pane={pane} />}
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {!entry ? (
+        {state.docId === TRADE_ID && store.settings.tradeEnabled ? (
+          <Suspense fallback={<Empty text="Loading Trade…" />}>
+            <TradeView />
+          </Suspense>
+        ) : !entry ? (
           <Empty text="Pick a character, stash or vault from the list." />
         ) : entry.error ? (
           <div className="rounded border border-red-900 bg-red-950/40 p-4 text-[13px] text-red-200">

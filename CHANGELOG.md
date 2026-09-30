@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0
+
+**New Single Player Trading Support**
+
+- Paste or drop a Traderie screenshot to trade for the item listed.
+- The listing must be PC, Ladder, Reign of the Warlock and under 3 days old, and match your Softcore/Hardcore file.
+- Every roll is checked against the item's real range. Rolls the listing doesn't show are randomized.
+- Currently supports uniques, set items (including full sets), runeword bases, runes, gems, keys and uber parts.
+- Magic, rare and crafted items and runewords aren't supported yet.
+- You pay what the listing asks: drag the runes, gems or keys it's trading for into your offer to unlock Accept.
+
 ## 1.1.3
 
 - Clearer set bonuses in tooltips: grouped under small headings ("This item · 2 pieces", the set's name, "2 pieces", "Full set") in smaller text, with the set-wide bonuses in a softer green, instead of "(2 items)" after every line.

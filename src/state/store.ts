@@ -29,6 +29,10 @@ import {
   isCharacterFile,
   isStashFile,
   newUid,
+  createCompactItem,
+  createUberItem,
+  isUberCode,
+  withNewId,
   occupancy,
   parseCharacter,
   parseStash,
@@ -111,6 +115,8 @@ export interface Settings {
   autoUpdate: boolean;
   /** The save folder opened last (desktop app): reopened automatically at the next launch. */
   lastFolder?: string;
+  /** Optional Trade panel (creates items); off unless the player turns it on. */
+  tradeEnabled?: boolean;
   /** Game install or extracted data folder that artwork is read from (auto-detected when unset). */
   artPath?: string;
 }
@@ -130,6 +136,31 @@ export function savedSettings(): Partial<Settings> {
     return {};
   }
 }
+
+/** A unique or set item wanted in a trade, already built with its rolls (so the tooltip shows exactly what you get). */
+export interface TradeWantItem {
+  key: string;
+  kind: 'unique' | 'set' | 'base';
+  /** Unique or set row, or the base's item index. */
+  id: number;
+  name: string;
+  item: D2Item;
+}
+
+/** What can be offered as payment in a trade: runes, gems, and uber keys and parts. */
+export const tradeGood = (i: D2Item) => !i.sockets.length && ((i.compact && (!!i.def?.flags.includes('R') || !!i.def?.flags.includes('g'))) || isUberCode(i.code));
+
+/** One thing an imported listing asks for: "1 X Ist Rune". */
+export interface TradeAsk {
+  code: string;
+  qty: number;
+  name: string;
+}
+
+/** Pane id for the optional Trade panel. */
+export const TRADE_ID = 'trade';
+/** The Trade panel's offer box: runes, gems and uber items you've put up as payment (moved out of their file). */
+export const TRADE_OFFER_ID = 'trade-offer';
 
 const descCache = new WeakMap<D2Item, ItemDescription>();
 export function desc(item: D2Item): ItemDescription {
@@ -196,6 +227,10 @@ export class Store {
   };
   getRev = () => this.rev;
   emit() {
+    // what you offer is whatever sits in the offer box
+    const offer = new Map<string, number>();
+    for (const e of (this.tradeOfferBox.doc as Vault).entries) offer.set(e.item.code, (offer.get(e.item.code) ?? 0) + 1);
+    this.trade.offer = offer;
     this.rev++;
     this.listeners.forEach((l) => l());
   }
@@ -417,6 +452,25 @@ export class Store {
     this.emit();
   }
 
+  /**
+   * Opens the Trade panel on the right with a Reign of the Warlock shared stash on the left, on its Stackables
+   * tab, where the runes, gems, keys and parts you pay with live. Keeps a RotW stash already on the left (so a
+   * hardcore one stays), otherwise picks the softcore one. Without a RotW stash the left side is left alone.
+   */
+  openTrade() {
+    const isRotwStash = (id?: string) => {
+      const d = id ? this.docs.get(id)?.doc : undefined;
+      return d?.kind === 'stash' && d.modern ? d : undefined;
+    };
+    const stashes = [...this.docs.values()].filter((e) => isRotwStash(e.id));
+    const pick = isRotwStash(this.panes[0].docId) ? this.panes[0].docId : (stashes.find((e) => !(e.doc as D2SharedStash).hardcore) ?? stashes[0])?.id;
+    const d = isRotwStash(pick);
+    if (!pick || !d) return this.showInPane(1, TRADE_ID);
+    const stackTab = d.tabs.findIndex((t) => t.type === StashTabType.Advanced);
+    this.panes = [{ docId: pick, tab: stackTab >= 0 ? stackTab : 0 }, { docId: TRADE_ID, tab: 0 }];
+    this.emit();
+  }
+
   /** Swaps what the left and right panes show. */
   swapPanes() {
     this.panes = [this.panes[1], this.panes[0]];
@@ -434,7 +488,7 @@ export class Store {
   private snapshot(label: string, docIds: string[]) {
     const lists: Snapshot['lists'] = new Map();
     for (const id of docIds) {
-      const e = this.docs.get(id);
+      const e = this.entryOf(id);
       const d = e?.doc;
       if (!e || !d) continue;
       let restore: () => void;
@@ -457,7 +511,7 @@ export class Store {
     const snap = this.history.pop();
     if (!snap) return;
     for (const [id, s] of snap.lists) {
-      const e = this.docs.get(id);
+      const e = this.entryOf(id);
       if (!e?.doc) continue;
       s.restore();
       e.dirty = s.dirty || e.dirty;
@@ -468,8 +522,16 @@ export class Store {
 
   // ------------------------------------------------------------------ moving
 
+  /**
+   * A loaded file, or one of the Trade panel's boxes, which work like small vaults that are never saved: "Received"
+   * (TRADE_ID) and the offer (TRADE_OFFER_ID).
+   */
+  private entryOf(id: string): LoadedDoc | undefined {
+    return id === TRADE_ID ? this.tradeInbox : id === TRADE_OFFER_ID ? this.tradeOfferBox : this.docs.get(id);
+  }
+
   private hardcoreOf(docId: string, item?: D2Item): boolean | undefined {
-    const d = this.docs.get(docId)?.doc;
+    const d = this.entryOf(docId)?.doc;
     if (!d) return undefined;
     if (d.kind === 'character') return d.hardcore;
     if (d.kind === 'stash') return d.hardcore;
@@ -491,7 +553,7 @@ export class Store {
 
   /** The item as it would travel: taking from a Stackables tab moves a single one. */
   private travelling(item: D2Item, fromDocId: string): D2Item {
-    const d = this.docs.get(fromDocId)?.doc;
+    const d = this.entryOf(fromDocId)?.doc;
     if (d?.kind === 'stash' && inStackablesTab(d, item)) return { ...item, advancedStackSize: undefined };
     return item;
   }
@@ -499,11 +561,21 @@ export class Store {
   /** Validates a move without performing it. */
   check(item: D2Item, fromDocId: string, to: Loc): { ok: boolean; reason?: string; warning?: string; x?: number; y?: number } {
     if (this.settings.readOnly) return { ok: false, reason: 'Read-only mode is on (turn it off in Settings to move items).' };
-    const target = this.docs.get(to.docId)?.doc;
-    const source = this.docs.get(fromDocId)?.doc;
+    const target = (to.docId === TRADE_ID ? undefined : this.entryOf(to.docId))?.doc;
+    const source = this.entryOf(fromDocId)?.doc;
     if (!target) return { ok: false, reason: 'Target file is not loaded' };
     if (!source) return { ok: false, reason: 'Source is not loaded' };
     const same = fromDocId === to.docId;
+    if (to.docId === TRADE_OFFER_ID) {
+      if (!tradeGood(item)) return { ok: false, reason: 'Only runes, gems, keys and uber parts can be offered.' };
+      if (fromDocId !== this.tradeDocId()) return { ok: false, reason: 'Pay from the file on the other side of the Trade panel.' };
+      const realm = source.kind === 'vault' ? source.entries.find((e) => e.item === item)?.realm : this.realmOf(fromDocId);
+      if (realm !== 'rotw') return { ok: false, reason: 'Only Reign of the Warlock runes, gems and uber items can be offered.' };
+      const hc = this.hardcoreOf(fromDocId, item);
+      if (this.trade.mode && hc !== undefined && hc !== (this.trade.mode === 'hardcore')) return { ok: false, reason: `This listing is ${this.trade.mode}; that one is ${hc ? 'hardcore' : 'softcore'}. Softcore and hardcore never mix.` };
+      const other = (this.tradeOfferBox.doc as Vault).entries[0];
+      if (other && hc !== undefined && !!other.hardcore !== hc) return { ok: false, reason: 'Your offer already has items from the other mode. Softcore and hardcore never mix.' };
+    }
 
     // hardcore and softcore never mix; neither do Reign of the Warlock, Lord of Destruction and Classic
     if (to.area !== 'vault') {
@@ -562,8 +634,8 @@ export class Store {
       if (!opts.quiet) this.toast('error', chk.reason ?? 'Cannot move there');
       return false;
     }
-    const src = this.docs.get(fromDocId)!;
-    const dst = this.docs.get(to.docId)!;
+    const src = this.entryOf(fromDocId)!;
+    const dst = this.entryOf(to.docId)!;
     if (!opts.noSnapshot) this.snapshot(opts.label ?? `move ${desc(item).name}`, [fromDocId, to.docId]);
 
     // detach
@@ -747,6 +819,241 @@ export class Store {
     return list;
   }
 
+  // ------------------------------------------------------------------ trade (optional feature, Settings → Trade)
+
+  /** What the player wants and what they're offering: runes and gems by item code, plus built unique and set items. */
+  trade = {
+    want: new Map<string, number>(),
+    offer: new Map<string, number>(),
+    items: [] as TradeWantItem[],
+    mode: undefined as 'softcore' | 'hardcore' | undefined,
+    /** The imported listing's price: options (Traderie's "OR"), each a list of runes, gems or uber items. */
+    ask: undefined as TradeAsk[][] | undefined,
+    /** The imported listing's name, for messages. */
+    listing: undefined as string | undefined,
+  };
+
+  /**
+   * Puts an imported listing in the trade, replacing any listing (and anything picked by hand) already there:
+   * what it sells, its asking price and its Softcore/Hardcore tag. Returns why it can't, or undefined.
+   */
+  tradeSetListing(l: { name: string; mode: 'softcore' | 'hardcore'; ask: TradeAsk[][]; want?: [string, number][]; items?: Omit<TradeWantItem, 'key'>[] }): string | undefined {
+    const prev = this.trade.mode;
+    this.trade.mode = undefined;
+    const problem = this.tradeModeProblem(l.mode);
+    if (problem) {
+      this.trade.mode = prev;
+      return problem;
+    }
+    this.trade = {
+      ...this.trade,
+      want: new Map(l.want ?? []),
+      items: (l.items ?? []).map((w) => ({ ...w, key: newUid() })),
+      mode: l.mode,
+      ask: l.ask,
+      listing: l.name,
+    };
+    this.emit();
+    return undefined;
+  }
+
+  /** Which of the listing's price options the offer is exactly (same runes, same counts), or -1. */
+  tradeAskMatch(): number {
+    const { ask, offer } = this.trade;
+    if (!ask) return -1;
+    return ask.findIndex((opt) => opt.length === offer.size && opt.every((a) => offer.get(a.code) === a.qty));
+  }
+
+  /**
+   * Remembers the Softcore/Hardcore tag of a listing imported from a screenshot; every listing in one trade must
+   * agree, and it must match the file you pay from when you accept. Returns why it can't, or undefined.
+   */
+  tradeListingMode(mode: 'softcore' | 'hardcore'): string | undefined {
+    const problem = this.tradeModeProblem(mode);
+    if (problem) return problem;
+    this.trade.mode = mode;
+    return undefined;
+  }
+
+  /**
+   * Why a Softcore or Hardcore listing can't go into this trade: it clashes with listings already in it, or with
+   * the character or stash you pay from (a vault can hold both, so its runes are checked when you accept).
+   */
+  tradeModeProblem(mode: 'softcore' | 'hardcore'): string | undefined {
+    const Mode = mode === 'hardcore' ? 'Hardcore' : 'Softcore';
+    if (this.trade.mode && this.trade.mode !== mode) return `This is a ${Mode} listing, but the listings already in this trade are ${this.trade.mode}. Softcore and hardcore never mix.`;
+    const docId = this.tradeDocId();
+    const e = docId ? this.docs.get(docId) : undefined;
+    if (!docId || !e?.doc) return undefined;
+    const name = docLabel(e.doc, e.name);
+    if (e.doc.kind === 'vault') {
+      const goods = this.tradeSources(docId);
+      if (goods.length && goods.every((g) => !!g.hardcore !== (mode === 'hardcore'))) return `This is a ${Mode} listing, but everything you could pay with in ${name} is ${mode === 'hardcore' ? 'softcore' : 'hardcore'}. Softcore and hardcore never mix.`;
+      return undefined;
+    }
+    const hc = this.hardcoreOf(docId);
+    if (hc !== undefined && hc !== (mode === 'hardcore')) return `This is a ${Mode} listing, but ${name} is ${hc ? 'hardcore' : 'softcore'}. Softcore and hardcore never mix.`;
+    return undefined;
+  }
+
+  /** Runes, gems and uber items offered as payment, taken out of their file until the trade is accepted or cleared. */
+  tradeOfferBox: LoadedDoc = { id: TRADE_OFFER_ID, path: '', name: 'Offer', dirty: false, backedUp: true, doc: { ...createVault('Offer'), entries: [] } };
+
+  get tradeOffered(): D2Item[] {
+    return (this.tradeOfferBox.doc as Vault).entries.map((e) => e.item);
+  }
+
+  /** Traded items waiting to be dragged into a character, stash or vault (never saved). */
+  tradeInbox: LoadedDoc = { id: TRADE_ID, path: '', name: 'Trade', dirty: false, backedUp: true, doc: { ...createVault('Received'), entries: [] } };
+
+  get tradeReceived(): D2Item[] {
+    return (this.tradeInbox.doc as Vault).entries.map((e) => e.item);
+  }
+
+  /** Moves every received item into the file on the other side (onto Stackables stacks when possible). */
+  tradeDeliverAll() {
+    const docId = this.tradeDocId();
+    const target = docId ? this.docs.get(docId)?.doc : undefined;
+    if (!docId || !target) return this.toast('error', 'Open a character, stash or vault on the other side first.');
+    const items = [...this.tradeReceived];
+    this.snapshot(`move ${items.length} traded items`, [TRADE_ID, docId]);
+    let n = 0;
+    for (const it of items) {
+      const stackTab = target.kind === 'stash' ? target.tabs.findIndex((t) => t.type === StashTabType.Advanced) : -1;
+      const locs: Loc[] = [...(stackTab >= 0 ? [{ docId, area: 'stackables', tab: stackTab } as Loc] : []), ...this.candidateLocs(docId, target, this.panes.find((p) => p.docId === docId)?.tab ?? 0)];
+      for (const loc of locs) {
+        if (this.check(it, TRADE_ID, loc).ok && this.move(it, TRADE_ID, loc, { quiet: true, noSnapshot: true })) {
+          n++;
+          break;
+        }
+      }
+    }
+    this.toast(n === items.length ? 'success' : 'error', n === items.length ? `Moved ${n} traded item${n === 1 ? '' : 's'}.` : `Moved ${n} of ${items.length}; there's no room for the rest.`);
+    this.emit();
+  }
+
+  /** The file the Trade panel pays from and delivers to: whatever the other pane shows. */
+  tradeDocId(): string | undefined {
+    const i = this.panes.findIndex((p) => p.docId === TRADE_ID);
+    return i < 0 ? undefined : this.panes[i === 0 ? 1 : 0].docId;
+  }
+
+  /** Why the other pane can't trade, or undefined when it can. */
+  tradeProblem(docId = this.tradeDocId()): string | undefined {
+    const d = docId ? this.docs.get(docId)?.doc : undefined;
+    if (!d) return 'Open a Reign of the Warlock character, shared stash or vault on the other side.';
+    if (this.settings.readOnly) return 'Read-only mode is on (turn it off in Settings to trade).';
+    if (d.kind === 'vault') return undefined;
+    if (this.realmOf(docId!) !== 'rotw') return 'Trades only work with Reign of the Warlock saves.';
+    return undefined;
+  }
+
+  /** Runes and gems a file holds that can be offered, by code (Stackables stacks count fully). */
+  tradeOwned(docId = this.tradeDocId(), codes?: (c: string) => boolean): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const { item, count } of this.tradeSources(docId)) if (!codes || codes(item.code)) out.set(item.code, (out.get(item.code) ?? 0) + count);
+    return out;
+  }
+
+  private tradeSources(docId?: string): { item: D2Item; count: number; hardcore?: boolean; realm?: string }[] {
+    const d = docId ? this.docs.get(docId)?.doc : undefined;
+    if (!d) return [];
+    const ok = tradeGood;
+    if (d.kind === 'vault') return d.entries.filter((e) => ok(e.item)).map((e) => ({ item: e.item, count: 1, hardcore: e.hardcore, realm: e.realm }));
+    if (d.kind === 'stash')
+      return d.tabs.flatMap((t) => t.items.filter(ok).map((i) => ({ item: i, count: t.type === StashTabType.Advanced ? stackCount(i) : 1, hardcore: d.hardcore, realm: 'rotw' })));
+    return d.items.filter((i) => i.mode === 0 && ok(i)).map((i) => ({ item: i, count: 1, hardcore: d.hardcore, realm: 'rotw' }));
+  }
+
+  /**
+   * Offers more (moves that many out of the file on the other side into the offer box) or takes some back (moves
+   * them home). Each is one undo step.
+   */
+  tradeOffer(code: string, delta: number) {
+    if (delta > 0) {
+      const docId = this.tradeDocId();
+      const first = docId ? this.tradeSources(docId).find((s) => s.item.code === code) : undefined;
+      if (!docId || !first) return this.emit();
+      return void this.moveStackable(first.item, docId, { docId: TRADE_OFFER_ID, area: 'vault' }, delta);
+    }
+    this.tradeReturn(code, -delta);
+  }
+
+  /** Moves offered items back to the file on the other side (onto Stackables stacks when possible). */
+  tradeReturn(code?: string, n = Infinity): number {
+    const docId = this.tradeDocId();
+    const target = docId ? this.docs.get(docId)?.doc : undefined;
+    const items = this.tradeOffered.filter((i) => !code || i.code === code).slice(0, n === Infinity ? undefined : n);
+    if (!items.length) return 0;
+    if (!docId || !target) {
+      this.toast('error', 'Open the file you paid from on the other side to take your offer back.');
+      return 0;
+    }
+    this.snapshot(`take back ${items.length} offered`, [TRADE_OFFER_ID, docId]);
+    let moved = 0;
+    for (const it of items) {
+      const stackTab = target.kind === 'stash' ? target.tabs.findIndex((t) => t.type === StashTabType.Advanced) : -1;
+      const locs: Loc[] = [...(stackTab >= 0 ? [{ docId, area: 'stackables', tab: stackTab } as Loc] : []), ...this.candidateLocs(docId, target, this.panes.find((p) => p.docId === docId)?.tab ?? 0)];
+      if (locs.some((loc) => this.check(it, TRADE_OFFER_ID, loc).ok && this.move(it, TRADE_OFFER_ID, loc, { quiet: true, noSnapshot: true }))) moved++;
+    }
+    if (moved < items.length) this.toast('error', `Put ${moved} of ${items.length} back; there's no room for the rest.`);
+    this.emit();
+    return moved;
+  }
+
+  /** Empties the trade: what you offered goes back where it came from. */
+  tradeClear() {
+    if (this.tradeOffered.length) this.tradeReturn();
+    this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined };
+    this.emit();
+  }
+
+  /**
+   * Performs the trade: the offer (exactly what the listing asks for) is used up, and what the listing sells is
+   * created in the Received box, ready to drag where you want it. One undo step; nothing is written until Save.
+   */
+  tradeAccept(): boolean {
+    const docId = this.tradeDocId();
+    const problem = this.tradeProblem(docId);
+    const fail = (m: string) => (this.toast('error', m), false);
+    if (problem) return fail(problem);
+    const { want, items, ask } = this.trade;
+    if (!ask || (!want.size && !items.length)) return fail('Import a listing first.');
+    if (this.tradeAskMatch() < 0) {
+      const text = ask.map((o) => o.map((a) => `${a.qty}× ${a.name}`).join(' + ')).join(' or ');
+      return fail(`Offer exactly what the listing asks for: ${text}.`);
+    }
+    // the payment is what's in the offer box: all Reign of the Warlock, all softcore or all hardcore
+    const paid = (this.tradeOfferBox.doc as Vault).entries;
+    if (!paid.length) return fail('Drag what you pay with into your offer first.');
+    if (paid.some((p) => p.realm !== 'rotw')) return fail('Only Reign of the Warlock runes, gems and uber items can be traded.');
+    const hcs = new Set(paid.map((p) => !!p.hardcore));
+    if (hcs.size > 1) return fail('Your offer mixes softcore and hardcore items. Softcore and hardcore never mix.');
+    const hardcore = [...hcs][0] ?? false;
+    if (this.trade.mode && (this.trade.mode === 'hardcore') !== hardcore)
+      return fail(`The listing you imported is ${this.trade.mode}, but you're paying from a ${hardcore ? 'hardcore' : 'softcore'} file. Softcore and hardcore never mix.`);
+    this.snapshot('trade', [TRADE_OFFER_ID, TRADE_ID]);
+    const inbox = this.tradeInbox.doc as Vault;
+    try {
+      (this.tradeOfferBox.doc as Vault).entries = [];
+      // what you get waits in the Received box until you drag it where you want it
+      const add = (item: D2Item) => inbox.entries.push({ uid: newUid(), item, addedAt: new Date().toISOString(), source: 'Trade', realm: 'rotw', hardcore });
+      for (const [code, n] of want) for (let i = 0; i < n; i++) add(isUberCode(code) ? createUberItem(code) : createCompactItem(code, 105));
+      for (const w of items) add(withNewId(w.item));
+    } catch (err) {
+      this.undoQuiet();
+      this.emit();
+      return fail((err as Error).message);
+    }
+    const got = [...[...want].map(([c, n]) => `${n}× ${GD.items[c]?.name ?? c}`), ...items.map((w) => w.name)].join(', ');
+    const count = [...want.values()].reduce((a, b) => a + b, 0) + items.length;
+    this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined };
+    this.toast('success', `Traded for ${got}. Drag ${count === 1 ? 'it' : 'them'} from Received into a stash, character or vault. Undo with Ctrl+Z.`);
+    this.emit();
+    return true;
+  }
+
+
   // ------------------------------------------------------------------ deleting items
 
   /** Items waiting for the user to confirm deletion (the app shows a dialog while this is set). */
@@ -845,7 +1152,7 @@ export class Store {
   moveStackable(item: D2Item, fromDocId: string, to: Loc, count: number): boolean {
     if (count <= 1 || !isBoardStackable(item)) return this.move(item, fromDocId, to);
     if (this.settings.readOnly) return (this.toast('error', 'Read-only mode is on (turn it off in Settings to move items).'), false);
-    const src = this.docs.get(fromDocId)?.doc;
+    const src = this.entryOf(fromDocId)?.doc;
     if (!src) return false;
     const stackTab = src.kind === 'stash' ? src.tabs.findIndex((t) => t.type === StashTabType.Advanced && t.items.includes(item)) : -1;
     const next = (moved: D2Item[]): D2Item | undefined => {
@@ -1023,6 +1330,10 @@ export class Store {
   /** Double-click behaviour: send the item to the other pane, picking a free spot. */
   quickMove(item: D2Item, fromDocId: string, pane: 0 | 1, count = 1) {
     const other = this.panes[pane === 0 ? 1 : 0];
+    if (other.docId === TRADE_ID && this.settings.tradeEnabled) {
+      if (!tradeGood(item)) return this.toast('info', 'Only runes, gems, uber keys and uber parts can be offered in trades for now.');
+      return void (count > 1 ? this.moveStackable(item, fromDocId, { docId: TRADE_OFFER_ID, area: 'vault' }, count) : this.move(item, fromDocId, { docId: TRADE_OFFER_ID, area: 'vault' }));
+    }
     const target = other.docId ? this.docs.get(other.docId)?.doc : undefined;
     if (!other.docId || !target) return this.toast('error', 'Open a file in the other pane first.');
     for (const loc of this.candidateLocs(other.docId, target, other.tab)) {
@@ -1032,7 +1343,7 @@ export class Store {
     if (last) this.move(item, fromDocId, last); // shows the reason
   }
 
-  private candidateLocs(docId: string, target: AnyDoc, tab: number): Loc[] {
+  candidateLocs(docId: string, target: AnyDoc, tab: number): Loc[] {
     if (target.kind === 'vault') return [{ docId, area: 'vault' }];
     if (target.kind === 'character')
       return (['stash', 'inventory', 'cube'] as const).map((area) => ({ docId, area }));
@@ -1057,6 +1368,9 @@ export class Store {
 
   async saveAll() {
     if (this.settings.readOnly) return this.toast('error', 'Read-only mode is on: nothing is written. Turn it off in Settings to save.');
+    if (this.tradeReceived.length)
+      return this.toast('error', `Move your ${this.tradeReceived.length} traded item${this.tradeReceived.length === 1 ? '' : 's'} out of the Trade panel's Received box before saving (or undo the trade).`);
+    if (this.tradeOffered.length) return this.toast('error', 'Finish the trade or take your offer back (Clear) before saving, so no runes are lost.');
     const dirty = this.dirtyDocs.filter((d) => d.doc);
     if (!dirty.length) return this.toast('info', 'Nothing to save.');
     if (!this.platform.canWrite && this.platform.id === 'demo') {

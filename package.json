@@ -1,17 +1,18 @@
 {
   "name": "horadric-loot-box",
-  "version": "1.1.3",
-  "description": "Muling tool for Diablo II: Resurrected — Reign of the Warlock (save v105)",
+  "version": "2.0.0",
+  "description": "Muling tool for Diablo II: Resurrected \u2014 Reign of the Warlock (save v105)",
   "scripts": {
     "gamedata": "node scripts/build-gamedata.mjs",
-    "dev": "vite",
-    "build": "node scripts/build-gamedata.mjs && tsc -p . && vite build",
+    "dev": "node scripts/copy-ocr.mjs && vite",
+    "build": "node scripts/build-gamedata.mjs && node scripts/copy-ocr.mjs && tsc -p . && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -p .",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build"
+    "desktop:build": "tauri build",
+    "ocr": "node scripts/copy-ocr.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -21,8 +22,10 @@
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.12.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.5",

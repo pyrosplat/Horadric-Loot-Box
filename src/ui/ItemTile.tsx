@@ -36,9 +36,11 @@ export interface TileProps {
   tipExtra?: string;
   /** Pane the tile is shown in (for sending a selection to the other pane). */
   pane?: 0 | 1;
+  /** Stack count to show instead of the item's own (a trade box groups loose runes into one tile). */
+  count?: number;
 }
 
-export function ItemTile({ item, docId, cell, draggable, onDoubleClick, onContext, style, highlight, dim, box, tipExtra, pane }: TileProps) {
+export function ItemTile({ item, docId, cell, draggable, onDoubleClick, onContext, style, highlight, dim, box, tipExtra, pane, count }: TileProps) {
   const store = useStore();
   const d = desc(item);
   const tip = useTooltip();
@@ -46,7 +48,7 @@ export function ItemTile({ item, docId, cell, draggable, onDoubleClick, onContex
   const width = box ? box.w : w * cell - 2;
   const height = box ? box.h : h * cell - 2;
   const view = store.showArt ? store.settings.itemView : 'tiles';
-  const stack = item.advancedStackSize ?? (item.quantity && item.def?.stackable ? item.quantity : undefined);
+  const stack = count ?? item.advancedStackSize ?? (item.quantity && item.def?.stackable ? item.quantity : undefined);
   const artBox = view !== 'tiles';
   const selected = store.isSelected(item);
   return (

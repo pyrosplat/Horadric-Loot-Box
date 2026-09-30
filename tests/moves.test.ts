@@ -616,3 +616,391 @@ describe('remembering the save folder', () => {
     expect(store.settings.lastFolder).toBeUndefined();
   });
 });
+
+describe('trade (optional feature)', () => {
+  const sid = 't/ModernSharedStashSoftCoreV2.d2i';
+  const stackTab = () => modern().tabs.findIndex((t) => t.type === 1);
+  const count = (code: string) => modern().tabs[stackTab()].items.filter((i) => i.code === code).reduce((n, i) => n + (i.advancedStackSize ?? 1), 0);
+
+  test('created runes and gems parse back and survive a save', async () => {
+    const { createCompactItem } = await import('../src/core');
+    for (const c of ['r01', 'r24', 'r33', 'gpw', 'skz']) {
+      const it = createCompactItem(c);
+      expect([it.code, it.compact, it.advancedStackSize]).toEqual([c, true, undefined]);
+    }
+    expect(() => createCompactItem('cm3')).toThrow();
+    expect(() => createCompactItem('r24', 99)).toThrow();
+  });
+
+  test('paying with Um from the Stackables tab for an Ist', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    expect(store.tradeProblem()).toBeUndefined();
+    const um = count('r22'), ist = count('r24');
+    expect(um).toBeGreaterThanOrEqual(3);
+    // a listing selling an Ist for 3 Um
+    expect(store.tradeSetListing({ name: 'Ist Rune', mode: 'softcore', ask: [[{ code: 'r22', qty: 3, name: 'Um Rune' }]], want: [['r24', 1]] })).toBeUndefined();
+    store.tradeOffer('r22', 2);
+    // offered runes leave the stash right away (the stack counts down) and wait in the offer box
+    expect([count('r22'), store.trade.offer.get('r22')]).toEqual([um - 2, 2]);
+    expect(store.tradeAccept()).toBe(false); // 2 isn't the 3 asked for
+    store.tradeOffer('r22', -1); // right-click: one goes back onto its stack
+    expect(count('r22')).toBe(um - 1);
+    store.tradeOffer('r22', 2);
+    // saving waits while runes sit in the offer
+    let blocked = '';
+    const t0 = store.toast;
+    store.toast = (_k, t) => void (blocked = t);
+    await store.saveAll();
+    store.toast = t0;
+    expect(blocked).toMatch(/take your offer back/);
+    expect(store.tradeAccept()).toBe(true);
+    // paid, and the Ist waits in the Received box; saving is blocked until it's moved out
+    expect([count('r22'), count('r24'), store.trade.offer.size]).toEqual([um - 3, ist, 0]);
+    expect(store.tradeReceived.map((i) => i.code)).toEqual(['r24']);
+    let saved = false;
+    const toast = store.toast;
+    store.toast = (_k, t) => void (saved = /Received/.test(t));
+    await store.saveAll();
+    expect(saved).toBe(true);
+    store.toast = toast;
+    store.tradeDeliverAll();
+    expect(store.tradeReceived.length).toBe(0);
+    expect([count('r22'), count('r24')]).toEqual([um - 3, ist + 1]);
+    const out = roundTrip(modern()) as D2SharedStash;
+    expect(out.tabs[stackTab()].items.find((i) => i.code === 'r24')?.advancedStackSize ?? 0).toBe(ist + 1);
+    store.undo(); // the delivery
+    expect(store.tradeReceived.length).toBe(1);
+    store.undo(); // the trade: the Um are back in the offer box
+    expect([count('r22'), count('r24'), store.tradeReceived.length, store.trade.offer.get('r22')]).toEqual([um - 3, ist, 0, 3]);
+    store.tradeClear(); // and Clear puts them back on the stash
+    expect([count('r22'), store.trade.offer.size]).toEqual([um, 0]);
+  });
+
+  test('only Reign of the Warlock files can trade, and you can only offer what you have', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: 't/SharedStashSoftCoreV2.d2i', tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    expect(store.tradeProblem()).toMatch(/Reign of the Warlock/);
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    const have = store.tradeOwned().get('r33') ?? 0;
+    store.tradeOffer('r33', 5);
+    expect(store.trade.offer.get('r33') ?? 0).toBe(Math.min(5, have));
+    store.tradeClear();
+  });
+});
+
+describe('building unique and set items', () => {
+  test('every buildable unique and set item builds and parses back, perfect and random', async () => {
+    const { buildableTemplates, createTemplateItem, rollSlots, pickRolls, describeItem } = await import('../src/core');
+    let n = 0;
+    for (const kind of ['unique', 'set'] as const)
+      for (const t of buildableTemplates(kind))
+        for (const mode of ['perfect', 'random'] as const) {
+          const it = createTemplateItem(kind, t.id, pickRolls(rollSlots(kind, t.id), mode));
+          expect(describeItem(it).lines.length).toBeGreaterThan(0);
+          n++;
+        }
+    expect(n).toBeGreaterThan(1000); // ~550 items, twice each
+  });
+
+  test('built items match real drops apart from the id and graphic', async () => {
+    const { createTemplateItem, parseCharacter, statDef } = await import('../src/core');
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const ch = parseCharacter(new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', 'ChaosSC.d2s'))));
+    const key = (i: D2Item) => [i.code, i.itemLevel > 0, i.defense, i.maxDurability, i.durability, i.stats.map((s) => `${statDef(s.id).key}${s.param}=${s.value}`).join(' ')].join('|');
+    // real SoJs, Mara's and an Arachnid Mesh with perfect (or fixed) rolls: built perfect, they're the same item
+    const real = ch.items.filter((i) => i.quality === Quality.Unique && ['The Stone of Jordan', "Mara's Kaleidoscope", 'Arachnid Mesh'].includes(GD.uniques[i.uniqueId!]?.name));
+    expect(real.length).toBeGreaterThanOrEqual(3);
+    for (const r of real) expect(key(createTemplateItem('unique', r.uniqueId!))).toBe(key(r));
+  });
+
+  test('rolls are respected and checked against their range', async () => {
+    const { buildableTemplates, createTemplateItem, rollSlots, describeItem } = await import('../src/core');
+    const anni = buildableTemplates('unique').find((t) => t.name === 'Annihilus')!;
+    const slots = rollSlots('unique', anni.id);
+    const low = Object.fromEntries(slots.filter((s) => s.variable).map((s) => [s.key, s.lo]));
+    const it = createTemplateItem('unique', anni.id, low);
+    expect(describeItem(it).lines.some((l) => l.text === '+10 to all Attributes' && l.range === '10–20' && !l.perfect)).toBe(true);
+    expect(() => createTemplateItem('unique', anni.id, { [slots.find((s) => s.variable)!.key]: 99 })).toThrow(/outside/);
+    // Hellfire Torch: the class is chosen
+    const torch = buildableTemplates('unique').find((t) => t.name === 'Hellfire Torch')!;
+    const cls = rollSlots('unique', torch.id).find((s) => s.kind === 'class')!;
+    const sorc = createTemplateItem('unique', torch.id, { [cls.key]: 1 });
+    expect(describeItem(sorc).lines.some((l) => l.text === '+3 to Sorceress Skill Levels')).toBe(true);
+    // sockets and set bonuses
+    const coa = buildableTemplates('unique').find((t) => t.name === 'Crown of Ages')!;
+    const sock = rollSlots('unique', coa.id).find((s) => s.kind === 'sockets')!;
+    expect(createTemplateItem('unique', coa.id, { [sock.key]: 1 }).socketCount).toBe(1);
+    const tal = buildableTemplates('set').find((t) => t.name === "Tal Rasha's Lidless Eye")!;
+    const eye = createTemplateItem('set', tal.id);
+    expect([eye.setMask, eye.setBonusStats.length]).toEqual([15, 4]);
+  });
+
+  test('trading for a unique puts it in Received, and it moves and saves like any item', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    const { buildableTemplates, createTemplateItem } = await import('../src/core');
+    const sid = 't/ModernSharedStashSoftCoreV2.d2i';
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    const soj = buildableTemplates('unique').find((t) => t.name === 'The Stone of Jordan')!;
+    store.tradeSetListing({ name: 'The Stone of Jordan', mode: 'softcore', ask: [[{ code: 'r22', qty: 2, name: 'Um Rune' }]], items: [{ kind: 'unique', id: soj.id, name: 'The Stone of Jordan', item: createTemplateItem('unique', soj.id) }] });
+    store.tradeOffer('r22', 1); // it asks for 2 Um
+    expect(store.tradeAccept()).toBe(false);
+    store.tradeOffer('r22', 1);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.trade.items.length).toBe(0);
+    expect(store.tradeReceived.map((i) => i.uniqueId)).toEqual([soj.id]);
+    store.tradeDeliverAll();
+    expect(store.tradeReceived.length).toBe(0);
+    const out = roundTrip(modern()) as D2SharedStash;
+    expect(out.tabs.flatMap((t) => t.items).filter((i) => i.uniqueId === soj.id && i.quality === 7).length).toBeGreaterThanOrEqual(1);
+    store.undo();
+    store.undo();
+    expect(store.tradeReceived.length).toBe(0);
+  });
+});
+
+describe('ethereal items and plain bases', () => {
+  test('bases match real ones: a 2-socket Bardiche, a Dusk Shroud and an ethereal Sacred Armor', async () => {
+    const { createBaseItem, parseStash, parseCharacter } = await import('../src/core');
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const read = (f: string) => new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', f)));
+    const stash = parseStash(read('SharedStashSoftCoreV2.d2i')).tabs.flatMap((t) => t.items);
+    const bar = stash.find((i) => i.code === 'bar' && i.quality === Quality.Normal && !i.runeword)!;
+    const ours = createBaseItem('bar', { sockets: 2 });
+    expect([ours.flags >>> 0, ours.maxDurability, ours.socketCount, ours.stats.length]).toEqual([bar.flags >>> 0, bar.maxDurability, 2, bar.stats.length]);
+    // a Dusk Shroud used for a runeword: the same base apart from the runeword flag
+    const dusk = stash.find((i) => i.code === 'uui' && i.quality === Quality.Normal)!;
+    const d2 = createBaseItem('uui', { sockets: 3, defense: dusk.defense });
+    expect([d2.flags >>> 0, d2.defense, d2.maxDurability]).toEqual([(dusk.flags & ~0x04000000) >>> 0, dusk.defense, dusk.maxDurability]);
+    const sa = parseCharacter(read('Soska.d2s')).items.find((i) => i.code === 'uar' && i.ethereal)!;
+    const eth = createBaseItem('uar', { sockets: 4, ethereal: true });
+    expect([eth.defense, eth.maxDurability, eth.socketCount]).toEqual([sa.defense, sa.maxDurability, 4]);
+  });
+
+  test('limits: sockets, defense range, and what can be ethereal', async () => {
+    const { createBaseItem, createTemplateItem, buildableTemplates, maxBaseSockets, canBuildEthereal, buildableBases } = await import('../src/core');
+    expect(maxBaseSockets('uit')).toBe(4); // Monarch
+    expect(maxBaseSockets('7s8')).toBe(5); // Thresher, capped by its own limit (polearms allow 6)
+    expect(() => createBaseItem('uit', { sockets: 5 })).toThrow(/0–4 sockets/);
+    expect(() => createBaseItem('uit', { defense: 1 })).toThrow(/defense/);
+    expect(createBaseItem('uit', { sockets: 0 }).socketed).toBe(false);
+    expect(canBuildEthereal('set', 'uth')).toBe(false);
+    expect(canBuildEthereal('unique', 'rin')).toBe(false);
+    expect(canBuildEthereal('base', '7cr')).toBe(false); // Phase Blade has no durability
+    expect(buildableBases().length).toBeGreaterThan(300);
+    const titan = buildableTemplates('unique').find((t) => t.name === "Titan's Revenge")!;
+    const t = createTemplateItem('unique', titan.id, {}, { ethereal: true });
+    expect(t.ethereal).toBe(true);
+    const soj = buildableTemplates('unique').find((t) => t.name === 'The Stone of Jordan')!;
+    expect(() => createTemplateItem('unique', soj.id, {}, { ethereal: true })).toThrow(/ethereal/);
+  });
+});
+
+describe('socket rolls never exceed the base', () => {
+  test('every unique and set item with sockets rolls only up to what its base holds', async () => {
+    const { buildableTemplates, rollSlots, maxBaseSockets, createTemplateItem, GD: gd } = await import('../src/core');
+    for (const kind of ['unique', 'set'] as const)
+      for (const t of buildableTemplates(kind))
+        for (const s of rollSlots(kind, t.id).filter((x) => x.kind === 'sockets')) {
+          expect(s.hi, t.name).toBeLessThanOrEqual(maxBaseSockets(t.code));
+          expect(createTemplateItem(kind, t.id, { [s.key]: s.hi }).socketCount).toBe(s.hi);
+        }
+    const range = (kind: 'unique' | 'set', name: string) => {
+      const t = buildableTemplates(kind).find((x) => x.name === name)!;
+      const s = rollSlots(kind, t.id).find((x) => x.kind === 'sockets')!;
+      return [s.lo, s.hi];
+    };
+    expect(range('set', "Aldur's Rhythm")).toEqual([2, 3]); // tables say 2–5, a Jagged Star holds 3
+    expect(range('unique', "Heaven's Light")).toEqual([1, 2]); // 1–3 on a 2-socket Mighty Scepter
+    expect(range('unique', 'Blade of Ali Baba')).toEqual([2, 2]); // 3 on a 2-socket Tulwar
+    expect(range('unique', 'Crown of Ages')).toEqual([1, 2]);
+    expect(range('unique', 'Rune Master')).toEqual([3, 5]);
+    void gd;
+  });
+});
+
+describe('superior bases, automatic mods and class skills', () => {
+  test('every base builds with every superior and automatic mod it can roll, and with 3 class skills', async () => {
+    const { buildableBases, createBaseItem, superiorRows, autoRows, classSkillsFor } = await import('../src/core');
+    let n = 0;
+    for (const b of buildableBases()) {
+      for (const row of [undefined, ...superiorRows(b.code)])
+        for (const a of [undefined, ...autoRows(b.code)]) {
+          const it = createBaseItem(b.code, { sockets: b.sockets, superior: row === undefined ? undefined : { row, values: [] }, auto: a === undefined ? undefined : { row: a, values: [] } });
+          expect(it.quality).toBe(row === undefined ? Quality.Normal : Quality.Superior);
+          n++;
+        }
+      const sk = classSkillsFor(b.code);
+      if (sk.length) createBaseItem(b.code, { skills: sk.slice(0, 3).map((s) => ({ skill: s.id, level: 3 })) });
+    }
+    expect(n).toBeGreaterThan(5000);
+  });
+
+  test('automatic mods are stored like the game does (a real Sacred Globe: "Snake’s" = id 17)', async () => {
+    const { createBaseItem, autoRows, parseCharacter } = await import('../src/core');
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const real = parseCharacter(new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', 'Soska.d2s')))).items.find((i) => i.code === 'ob2')!;
+    expect(GD.automagic[real.autoAffix! - 1].name).toBe("Snake's");
+    const ours = createBaseItem('ob2', { auto: { row: real.autoAffix! - 1, values: [6] } });
+    expect(ours.autoAffix).toBe(17);
+    expect(ours.stats.find((s) => s.id === 9)?.value).toBe(real.stats.find((s) => s.id === 9)?.value); // +6 mana
+    expect(autoRows('ob2')).toContain(16);
+  });
+
+  test('who rolls what: paladin shields get resistances, orbs get Sorceress skills, armor never gets damage', async () => {
+    const { createBaseItem, autoRows, classSkillsFor, superiorRows, describeItem } = await import('../src/core');
+    const code = Object.keys(GD.items).find((c) => GD.items[c].name === 'Sacred Targe')!;
+    const chromatic = autoRows(code).find((r) => GD.automagic[r].name === 'Chromatic')!;
+    expect(chromatic).toBeDefined();
+    expect(classSkillsFor(code)).toEqual([]); // paladin shields: no skills when white
+    const targe = createBaseItem(code, { sockets: 4, superior: { row: 2, values: [15] }, auto: { row: chromatic, values: [45] } });
+    const lines = describeItem(targe).lines.map((l) => l.text);
+    expect(lines).toContain('+15% Enhanced Defense');
+    expect(lines).toContain('All Resistances +45');
+    expect(classSkillsFor('6ws').every((s) => GD.skills[s.id].cls === 1)).toBe(true); // Archon Staff: Sorceress
+    expect(superiorRows('uap').every((r) => !GD.superior[r].mods.some((m) => m[0] === 'dmg%'))).toBe(true);
+    expect(() => createBaseItem(code, { auto: { row: chromatic, values: [50] } })).toThrow(/outside/);
+    expect(() => createBaseItem('6ws', { skills: [{ skill: 36, level: 4 }] })).toThrow(/\+1 to \+3/);
+    expect(() => createBaseItem('6ws', { skills: [{ skill: 6, level: 1 }] })).toThrow(/can't roll/); // an Amazon skill
+    expect(() => createBaseItem(code, { skills: [{ skill: 97, level: 1 }] })).toThrow(/can't roll/);
+  });
+});
+
+describe('the Trade panel only offers runeword bases', () => {
+  test('elite, socketable, fits a runeword; no boots, gloves, belts, javelins or throwing weapons', async () => {
+    const { runewordBases, isType, itemTypeOf } = await import('../src/core');
+    const list = runewordBases();
+    const names = list.map((b) => b.name);
+    for (const n of ['Monarch', 'Archon Plate', 'Dusk Shroud', 'Thresher', 'Giant Thresher', 'Phase Blade', 'Sacred Targe', 'Diadem', 'Eldritch Orb']) expect(names, n).toContain(n);
+    for (const n of ['Mage Plate', 'Crystal Sword', 'Matriarchal Javelin', 'Flying Axe', 'Mirrored Boots', 'Vambraces', 'Mithril Coil']) expect(names, n).not.toContain(n);
+    for (const b of list) {
+      expect(b.tier).toBe('Elite');
+      expect(b.sockets).toBeGreaterThan(0);
+      expect(['boot', 'glov', 'belt', 'misl', 'tkni', 'taxe', 'jave'].some((t) => isType(b.code, t)), `${b.name} ${itemTypeOf(b.code)}`).toBe(false);
+    }
+  });
+});
+
+describe('uber items and RotW Sunder charms', () => {
+  test('uber keys, organs, essences and shards build like the game saves them', async () => {
+    const { createUberItem, UBER_CODES, parseStash } = await import('../src/core');
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const real = parseStash(new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', 'ModernSharedStashSoftCoreV2.d2i')))).tabs.flatMap((t) => t.items).find((i) => i.code === 'xa1')!;
+    const ours = createUberItem('xa1');
+    expect([ours.flags >>> 0, ours.formatVersion, ours.quality, ours.stats.length, ours.compact]).toEqual([real.flags >>> 0, real.formatVersion, real.quality, 0, false]);
+    for (const c of UBER_CODES) expect(createUberItem(c).code).toBe(c);
+    expect(() => createUberItem('r24')).toThrow();
+  });
+
+  test('trading Ist for a key set, with the keys landing on Stackables stacks', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    const sid = 't/ModernSharedStashSoftCoreV2.d2i';
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    const stash = () => modern();
+    const count = (code: string) => stash().tabs.flatMap((t) => t.items).filter((i) => i.code === code).reduce((n, i) => n + (i.advancedStackSize ?? 1), 0);
+    const before = ['pk1', 'pk2', 'pk3'].map(count);
+    store.tradeSetListing({ name: 'Key set', mode: 'softcore', ask: [[{ code: 'r22', qty: 3, name: 'Um Rune' }]], want: [['pk1', 1], ['pk2', 1], ['pk3', 1]] });
+    store.tradeOffer('r22', 3);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.tradeReceived.map((i) => i.code).sort()).toEqual(['pk1', 'pk2', 'pk3']);
+    store.tradeDeliverAll();
+    expect(store.tradeReceived.length).toBe(0);
+    expect(['pk1', 'pk2', 'pk3'].map(count)).toEqual(before.map((n) => n + 1));
+    roundTrip(stash());
+    store.undo();
+    store.undo();
+  });
+
+  test('old Sunder charms are out; the Latent ones are in, Renewed ones not yet', async () => {
+    const { buildableTemplates, unbuildableReason } = await import('../src/core');
+    const names = buildableTemplates('unique').map((t) => t.name);
+    for (const s of ['Cold Rupture', 'Flame Rift', 'Crack of the Heavens', 'Rotting Fissure', 'Bone Break', 'Black Cleft']) {
+      expect(names).not.toContain(s);
+      expect(names).toContain(`Latent ${s}`);
+      expect(names).not.toContain(`Renewed ${s}`);
+    }
+    const old = Object.keys(GD.uniques).find((k) => GD.uniques[k].name === 'Cold Rupture')!;
+    expect(unbuildableReason('unique', Number(old))).toBe('Replaced by Latent Cold Rupture');
+  });
+});
+
+describe('imported listings: Softcore and Hardcore never mix', () => {
+  test('a Hardcore listing can’t be paid from a Softcore file, and listings in one trade must agree', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: 't/ModernSharedStashSoftCoreV2.d2i', tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    store.tradeClear();
+    // a Hardcore listing is refused straight away while a Softcore stash pays
+    expect(store.tradeModeProblem('hardcore')).toBe('This is a Hardcore listing, but RotW Shared Stash is softcore. Softcore and hardcore never mix.');
+    expect(store.tradeListingMode('hardcore')).toMatch(/never mix/);
+    expect(store.trade.mode).toBeUndefined();
+    expect(store.tradeListingMode('softcore')).toBeUndefined();
+    expect(store.tradeModeProblem('hardcore')).toMatch(/listings already in this trade are softcore/);
+    // and with a Hardcore listing in the trade, softcore runes can't even go into the offer
+    store.trade.mode = 'hardcore';
+    let msg = '';
+    const toast = store.toast;
+    store.toast = (_k, t) => void (msg = t);
+    store.tradeOffer('r22', 3);
+    expect(store.trade.offer.size).toBe(0);
+    expect(msg).toMatch(/This listing is hardcore; that one is softcore/);
+    expect(store.tradeAccept()).toBe(false);
+    store.toast = toast;
+    store.tradeClear();
+    expect(store.trade.mode).toBeUndefined();
+  });
+});
+
+describe('trading for an imported listing, at the listing’s price', () => {
+  test('the offer has to be exactly one of the options the listing asks for', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    const { buildableTemplates, createTemplateItem } = await import('../src/core');
+    const sid = 't/ModernSharedStashSoftCoreV2.d2i';
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    store.tradeClear();
+    const anni = buildableTemplates('unique').find((t) => t.name === 'Annihilus')!;
+    const ask = [[{ code: 'r22', qty: 2, name: 'Um Rune' }], [{ code: 'r24', qty: 1, name: 'Ist Rune' }]];
+    expect(store.tradeSetListing({ name: 'Annihilus', mode: 'softcore', ask, items: [{ kind: 'unique', id: anni.id, name: 'Annihilus', item: createTemplateItem('unique', anni.id) }] })).toBeUndefined();
+    expect(store.tradeSetListing({ name: 'Annihilus', mode: 'hardcore', ask, items: [] })).toMatch(/never mix/); // and the softcore listing stays
+    expect(store.trade.listing).toBe('Annihilus');
+    let msg = '';
+    const toast = store.toast;
+    store.toast = (_k, t) => void (msg = t);
+    store.tradeOffer('r22', 1);
+    expect(store.tradeAskMatch()).toBe(-1);
+    expect(store.tradeAccept()).toBe(false);
+    expect(msg).toBe('Offer exactly what the listing asks for: 2× Um Rune or 1× Ist Rune.');
+    store.tradeOffer('r22', 2);
+    expect(store.tradeAskMatch()).toBe(-1); // 3 Um is more than asked
+    store.tradeOffer('r22', -1);
+    expect(store.tradeAskMatch()).toBe(0);
+    expect(store.tradeAccept()).toBe(true);
+    store.toast = toast;
+    expect(store.tradeReceived.map((i) => i.uniqueId)).toEqual([anni.id]);
+    expect([store.trade.ask, store.trade.listing]).toEqual([undefined, undefined]);
+    store.undo();
+  });
+});
+
+describe('the Trade button', () => {
+  test('opens Trade on the right and the RotW shared stash on its Stackables tab on the left', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: 't/Soska.d2s', tab: 0 }, { docId: 't/barbexp_v105.d2s', tab: 0 }];
+    store.openTrade();
+    const stash = store.docs.get(store.panes[0].docId!)!.doc as D2SharedStash;
+    expect(stash.kind).toBe('stash');
+    expect(stash.modern).toBe(true);
+    expect(stash.tabs[store.panes[0].tab].type).toBe(1); // Stackables
+    expect(store.panes[1].docId).toBe(TRADE_ID);
+  });
+});

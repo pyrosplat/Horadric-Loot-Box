@@ -61,6 +61,8 @@ export interface ItemDef {
   invfile?: string;
   /** Belts only: how many potion slots it gives (4, 8, 12 or 16). */
   beltBoxes?: number;
+  /** automagic.txt group of the automatic mod this base can roll (paladin shields, necro heads, orbs…). */
+  autoPrefix?: number;
 }
 
 export interface TypeDef {
@@ -74,6 +76,8 @@ export interface TypeDef {
   /** Can go in the potion belt. */
   beltable?: boolean;
   maxSockets: number[];
+  /** Class code whose skills white and superior items of this type can roll (up to 3, +1 to +3). */
+  staffMods?: string;
 }
 
 export interface GemMod {
@@ -102,7 +106,13 @@ export interface GameData {
   magicSuffixReq: number[];
   rareNames: (string | null)[];
   classes: { name: string; allSkills: string; tabs: string[]; classOnly: string }[];
-  skills: Record<string, { key: string; name: string; cls: number }>;
+  skills: Record<string, { key: string; name: string; cls: number; page: number; reqLevel: number }>;
+  /** playerclass.txt codes by class index ('ama', 'sor', … 'war'). */
+  classCodes: string[];
+  /** qualityitems.txt: superior mods by row (the save's 3-bit superior id) and which bases they fit. */
+  superior: { mods: PropDef[]; fits: string[] }[];
+  /** automagic.txt by row (the save's auto-affix id is row + 1). */
+  automagic: { name: string; group: number; spawnable: boolean; level: number; maxLevel?: number; levelReq: number; mods: PropDef[]; itypes: string[]; etypes: string[] }[];
   /** hireling.txt by Id: class, act, difficulty hired in, experience factor, skills, index into mercNames. */
   mercs: Record<string, { cls: string; act: number; diff: number; expPerLvl: number; skills: string[]; names: number }>;
   mercNames: string[][];

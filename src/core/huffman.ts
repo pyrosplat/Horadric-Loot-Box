@@ -1,4 +1,4 @@
-import type { BitReader } from './bits';
+import type { BitReader, BitWriter } from './bits';
 
 // D2R item code Huffman table: [symbol, code (MSB-first), length]
 const TABLE: [string, number, number][] = [
@@ -13,7 +13,22 @@ const TABLE: [string, number, number][] = [
 ];
 
 const decode = new Map<string, string>(); // key: `${length}:${code}`
-for (const [sym, code, length] of TABLE) decode.set(`${length}:${code}`, sym);
+const encode = new Map<string, { bits: number; length: number }>();
+for (const [sym, code, length] of TABLE) {
+  decode.set(`${length}:${code}`, sym);
+  let rev = 0;
+  for (let i = 0; i < length; i++) rev |= ((code >> i) & 1) << (length - 1 - i);
+  encode.set(sym, { bits: rev, length });
+}
+
+/** Writes a 4-character item code (padded with spaces), the inverse of `decodeItemCode`. */
+export function encodeItemCode(w: BitWriter, code: string): void {
+  for (const ch of code.padEnd(4, ' ').slice(0, 4)) {
+    const e = encode.get(ch);
+    if (!e) throw new Error(`Character '${ch}' can't be encoded in an item code`);
+    w.writeBits(e.bits, e.length);
+  }
+}
 
 /** Decodes a 4-character item code (trailing spaces are kept, e.g. "cap "). */
 export function decodeItemCode(r: BitReader): string {

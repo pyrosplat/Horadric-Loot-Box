@@ -13,3 +13,4 @@ export * from './gold';
 export * from './collection';
 export * from './merc';
 export * from './itemtype';
+export * from './build';

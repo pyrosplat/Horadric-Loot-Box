@@ -276,7 +276,7 @@ function magicName(item: D2Item, base: string) {
 
 let skillIds: Map<string, number> | undefined;
 /** A skill parameter from the tables: an id, an internal name ("Teleport") or a display name. */
-function skillId(param: string): number {
+export function skillId(param: string): number {
   if (/^\d+$/.test(param)) return Number(param);
   if (!skillIds) {
     skillIds = new Map();
@@ -288,13 +288,13 @@ function skillId(param: string): number {
   return skillIds.get(param.toLowerCase()) ?? 0;
 }
 
-const propDefs = (code: string) => GD.properties[code] ?? GD.properties[code.toLowerCase()] ?? Object.entries(GD.properties).find(([k]) => k.toLowerCase() === code.toLowerCase())?.[1] ?? [];
+export const propDefs = (code: string): { func: number; stat?: string; val?: string }[] => GD.properties[code] ?? GD.properties[code.toLowerCase()] ?? Object.entries(GD.properties).find(([k]) => k.toLowerCase() === code.toLowerCase())?.[1] ?? [];
 
 /**
  * The stats one table property gives when it rolls `v` (between its min and max). Properties with no stat
  * line of their own (sockets, random skills, ethereal) come back as `text`.
  */
-function propStatsAt(code: string, param: string, min: number, max: number, v: number): { stats: ItemStat[]; text?: string } {
+export function propStatsAt(code: string, param: string, min: number, max: number, v: number): { stats: ItemStat[]; text?: string } {
   const stats: ItemStat[] = [];
   let text: string | undefined;
   const mk = (key: string | undefined, value: number, p = 0) => {
@@ -305,8 +305,8 @@ function propStatsAt(code: string, param: string, min: number, max: number, v: n
   for (const f of propDefs(code)) {
     switch (f.func) {
       case 1: case 2: case 3: case 8: mk(f.stat, v, num); break;
-      case 5: mk('mindamage', v); break;
-      case 6: mk('maxdamage', v); break;
+      case 5: mk('mindamage', v); mk('secondary_mindamage', v); mk('item_throw_mindamage', v); break; // the game sets all three
+      case 6: mk('maxdamage', v); mk('secondary_maxdamage', v); mk('item_throw_maxdamage', v); break;
       case 7: mk('item_maxdamage_percent', v); mk('item_mindamage_percent', v); break;
       case 10: mk(f.stat, v, num); break;
       case 11: mk(f.stat, min, (skillId(param) << 6) | (max & 63)); break; // chance to cast: min = chance, max = level
@@ -319,6 +319,7 @@ function propStatsAt(code: string, param: string, min: number, max: number, v: n
       case 20: mk('item_indesctructible', 1); break;
       case 21: mk(f.stat, v, Number(f.val) || 0); break;
       case 22: mk(f.stat, v, skillId(param)); break;
+      case 24: mk(f.stat, v, num); break; // reanimate: param = monster
       case 23: text = GD.ui.strethereal ?? 'Ethereal (Cannot be Repaired)'; break;
       case 36: text = `+${Number(f.val) || num || 1} to a Random Class's Skill Levels`; break; // min/max pick the class
     }
@@ -448,7 +449,8 @@ export function describeItem(item: D2Item): ItemDescription {
   if (def?.flags.includes('A') && item.defense !== undefined) {
     const ed = find(16);
     const flat = find(31);
-    const d = Math.floor((item.defense * (100 + ed)) / 100) + flat;
+    // with Enhanced Defense the game counts the base as one higher (Andariel's Visage tops out at 387, not 385)
+    const d = (ed ? Math.floor(((item.defense + 1) * (100 + ed)) / 100) : item.defense) + flat;
     lines.push({ text: sprintf(GD.ui.ItemStats1h ?? 'Defense: %d', d), kind: 'base' });
   }
   if (def?.flags.includes('W')) {

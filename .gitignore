@@ -41,3 +41,4 @@ desktop.ini
 !tests/fixtures/*.d2i
 !public/demo/*.d2s
 !public/demo/*.d2i
+public/ocr/

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GD } from '../core';
 import { availablePlatforms, type Platform } from '../platform';
-import { Store, desc, docLabel, savedSettings, type ItemView } from '../state/store';
+import { Store, TRADE_ID, desc, docLabel, savedSettings, type ItemView } from '../state/store';
 import { QUALITY_TEXT } from './Tooltip';
 import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale } from './scale';
 import { StoreContext, useStore } from './context';
@@ -178,6 +178,17 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
               {store.update.state === 'installing' ? 'Updating…' : `Update to ${store.update.info?.version}`}
             </button>
           )}
+          {store.settings.tradeEnabled && (
+            <button
+              onClick={() => store.openTrade()}
+              title="Open the Trade panel, with your Reign of the Warlock shared stash's Stackables tab to pay from"
+              className={`mr-1 rounded border px-3 py-1 text-[13px] font-semibold ${
+                store.panes.some((p) => p.docId === TRADE_ID) ? 'border-gold-400 bg-gold-600/25 text-gold-200' : 'border-gold-600/70 bg-gold-600/10 text-gold-300 hover:border-gold-400 hover:bg-gold-600/20'
+              }`}
+            >
+              Trade{store.tradeReceived.length ? <span className="ml-1 rounded-full bg-emerald-700 px-1.5 text-[10.5px] text-white">{store.tradeReceived.length}</span> : null}
+            </button>
+          )}
           <HeaderBtn onClick={() => setSearch(true)} title="Search everything (Ctrl+F)">
             Search
           </HeaderBtn>
@@ -297,6 +308,7 @@ function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: (
             <ScaleSetting />
           </Section>
           <ArtSettings />
+          <TradeSettings />
           {store.platform.updates && <UpdateSettings />}
           <Section title="About">
             <p className="text-[13px] text-ink-200">
@@ -409,6 +421,51 @@ function ArtSettings() {
       ) : (
         <Hint>Game art needs the desktop app. Classic tiles are used here.</Hint>
       )}
+    </Section>
+  );
+}
+
+function TradeSettings() {
+  const store = useStore();
+  const [asking, setAsking] = useState(false);
+  const on = !!store.settings.tradeEnabled;
+  const turnOff = () => {
+    if (store.tradeReceived.length) return store.toast('error', "Move your traded items out of the Trade panel's Received box first.");
+    if (store.tradeOffered.length) store.tradeReturn();
+    if (store.tradeOffered.length) return store.toast('error', 'Take your offer back first (Clear in the Trade panel).');
+    store.setSettings({ tradeEnabled: false });
+    store.panes = store.panes.map((p) => (p.docId === TRADE_ID ? { tab: 0 } : p)) as typeof store.panes;
+    store.tradeClear();
+  };
+  return (
+    <Section title="Trade">
+      <label className="flex items-start gap-3 text-[13px] text-ink-200">
+        <input type="checkbox" className="mt-0.5 accent-[#c7a04a]" checked={on || asking} onChange={(e) => (e.target.checked ? setAsking(true) : (setAsking(false), turnOff()))} />
+        <span>
+          Enable Trade panel
+          <span className="block text-[12px] text-ink-500">Trade for items from Traderie listings: paste a screenshot, pay what the listing asks. Off by default.</span>
+        </span>
+      </label>
+      {asking && !on && (
+        <div className="mt-2 rounded border border-gold-600/50 bg-gold-600/10 p-3 text-[12px] leading-relaxed text-ink-300">
+          <p>
+            Trade <span className="text-ink-100">creates new items</span> in your saves, so it's a single-player cheat by design. It only works with Reign of the
+            Warlock saves, and softcore and hardcore never mix. Trades can be undone until you save, and every save is backed up first.
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <button className="rounded px-2.5 py-1 text-ink-400 hover:text-ink-200" onClick={() => setAsking(false)}>
+              Cancel
+            </button>
+            <button
+              className="rounded bg-gold-500 px-2.5 py-1 font-semibold text-ink-950 hover:bg-gold-400"
+              onClick={() => (store.setSettings({ tradeEnabled: true }), setAsking(false))}
+            >
+              Enable Trade
+            </button>
+          </div>
+        </div>
+      )}
+      {on && <Hint>Open it with the Trade button at the top, or pick Trade in either side's file list.</Hint>}
     </Section>
   );
 }
