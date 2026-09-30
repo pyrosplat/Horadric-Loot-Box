@@ -132,7 +132,26 @@ const tokens = (s: string) =>
     .replace(/\d+/g, '#')
     .replace(/(^|\s)\+#/g, '$1#') // "+6" and "6" (a red "+" OCR drops) read the same
     .split(' ')
+    .flatMap(unglue)
     .filter((t) => t && !STOP.has(t));
+
+let vocab: Set<string> | undefined;
+/**
+ * OCR sometimes runs a whole stat together ("+8ToAllResistances"): a long word that isn't one the game uses is
+ * split into ones it does ("to", "all", "resistances"), fewest pieces first.
+ */
+function unglue(t: string): string[] {
+  if (t.length < 7 || !/^[a-z]+$/.test(t)) return [t];
+  vocab ??= new Set([...STOP, ...templates().flatMap((x) => norm(x.lo).split(/[^a-z]+/)).filter((w) => w.length > 1)]);
+  if (vocab.has(t)) return [t];
+  const best: (string[] | undefined)[] = [[]];
+  for (let i = 1; i <= t.length; i++)
+    for (let j = Math.max(0, i - 16); j < i; j++) {
+      const w = t.slice(j, i);
+      if (best[j] && vocab.has(w) && (!best[i] || best[j]!.length + 1 < best[i]!.length)) best[i] = [...best[j]!, w];
+    }
+  return best[t.length] && best[t.length]!.length > 1 ? best[t.length]! : [t];
+}
 /** How alike two stat lines' wordings are, 0–1, whatever the word order (typos in a word still count). */
 function wordingSimilarity(a: string, b: string): number {
   const ta = tokens(a), tb = tokens(b);

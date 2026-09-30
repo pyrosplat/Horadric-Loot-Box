@@ -156,6 +156,11 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
     expect((eye.item as AffixListing).affixes.map((a) => `${GD.affixes[a.side][a.row].mods[0][0]}=${a.values}`)).toEqual(['skilltab=1', 'hp=31']);
     expect(askText(eye.ask ?? [])).toBe('1× Ohm Rune or 1× Vex Rune + 1× Mal Rune');
     expect(readListing(['1X Ring', 'Reign Of The Warlock - Ladder - PC - Softcore - Magic', '+2ToStrength', 'Trading For', '1 X Ist Rune', 'in 5 minutes']).errors).toEqual([]);
+    // a whole stat run together: "+8ToAllResistances"
+    const ring = readListing(['1 X Ring', 'Reign Of The Warlock - Ladder - Softcore - Orange - PC - Rare', '+103 To Attack Rating', '6% Life Stolen Per Hit', '+4 To Strength', '+25 To Life', '+8ToAllResistances', '6% Better Chance Of Getting Magic Items', 'Trading For', '1 X Lo Rune', 'in 55 seconds']);
+    expect(ring.errors).toEqual([]);
+    expect(ring.item).toMatchObject({ kind: 'rare', code: 'rin' });
+    expect((ring.item as AffixListing).affixes).toHaveLength(6);
     // "Make an Offer" has no price to pay
     const jewel = read('jewel-magic-offer');
     expect(jewel.item).toMatchObject({ kind: 'magic', code: 'jew' });
