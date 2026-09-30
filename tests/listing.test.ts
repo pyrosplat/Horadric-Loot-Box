@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GD, affixRows, buildableTemplates, createAffixItem, createBaseItem, createTemplateItem, describeItem, rollSlots, type Rolls } from '../src/core';
+import { GD, affixRows, buildableTemplates, createAffixItem, createRunewordItem, createBaseItem, createTemplateItem, describeItem, rollSlots, type Rolls } from '../src/core';
 import { askText, readAsk, readListing, readTags, tagErrors, type ListingItem } from '../src/trade/listing';
 
 type AffixListing = Extract<ListingItem, { affixes: unknown }>;
@@ -134,7 +134,9 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
   test('Superior 3-socket Demonhead with 14% Enhanced Defense and top base defense (176 shown)', () => {
     const r = read('demonhead-superior');
     expect(r.errors).toEqual([]);
-    expect(r.item).toMatchObject({ kind: 'base', code: 'usk', sockets: 3, defense: 154, superior: { row: 2, values: [14] }, ethereal: false });
+    expect(r.item).toMatchObject({ kind: 'base', code: 'usk', sockets: 3, defense: 155, superior: { row: 2, values: [14] }, ethereal: false });
+    const b = r.item as Extract<ListingItem, { kind: 'base' }>;
+    expect(describeItem(createBaseItem('usk', { sockets: 3, defense: b.defense, superior: b.superior })).lines.map((l) => l.text)).toContain('Defense: 176');
   });
 
   test('magic items: split into the prefix and suffix they must have, with the values read', () => {
@@ -213,6 +215,17 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
     expect(readListing(['1 X Ring', 'Reign Of The Warlock - PC - Ladder - Softcore - Rare', '+300% Enhanced Damage', 'Trading For', '1 X Ist Rune', 'in 5 minutes']).errors[0]).toMatch(/No rare Ring can have/);
   });
 
+  test('runewords: the runes\u2019 own bonuses and a superior base are part of the listing\u2019s numbers', () => {
+    // Cure in an ethereal superior Spired Helm: 108% = 100% Cure + 8% superior; 52% Poison Resist = 22% Cure + Tal's 30%
+    const r = read('cure-runeword-superior');
+    expect(r.errors).toEqual([]);
+    expect(r.item).toMatchObject({ kind: 'runeword', name: 'Cure', code: 'uhm', ethereal: true, rolls: { r1: 100, r2: 22 }, superior: { row: 2, values: [8] } });
+    const it = r.item as Extract<ListingItem, { kind: 'runeword' }>;
+    const built = createRunewordItem(it.row, it.code, it.rolls, { ethereal: true, superior: it.superior });
+    const text = describeItem(built).lines.map((l) => l.text);
+    expect(text).toEqual(expect.arrayContaining(['Defense: 499', '+108% Enhanced Defense', 'Poison Resist +52%']));
+  });
+
   test('runewords are read', () => {
     const death = read('death-runeword-nonladder');
     expect(death.errors).toEqual(['This is a Non Ladder listing. Only Ladder trades are allowed.']);
@@ -286,6 +299,7 @@ describe('the price: what the listing is trading for', () => {
       'demonhead-superior': '1× Ist Rune', // read as "ox 15 Rune" in the first pass, "1XIstRune" in the price pass
       'celtic-knot-magic': '1× Lem Rune',
       'amulet-magic': '1× Ist Rune',
+      'cure-runeword-superior': '1× Ber Rune',
       'call-to-arms-runeword': '1× Ber Rune + 1× Ohm Rune',
       'blood-gloves-crafted-nonladder': '9× Jah Rune',
       annihilus: '1× Ist Rune',

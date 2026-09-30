@@ -69,7 +69,7 @@ export type ListingItem =
   | { kind: 'rune' | 'gem' | 'uber'; code: string; name: string; quantity: number }
   | { kind: TemplateKind; id: number; name: string; rolls: Rolls; ethereal: boolean; defense?: number }
   /** A runeword ("1 X Call To Arms", "Crystal Sword" in the tags): the runeword, its base and its rolls. */
-  | { kind: 'runeword'; row: number; name: string; code: string; base: string; rolls: Rolls; ethereal: boolean }
+  | { kind: 'runeword'; row: number; name: string; code: string; base: string; rolls: Rolls; ethereal: boolean; superior?: ModPick }
   /** A whole set listed as one item ("1 X Angelic Raiment"): every piece. */
   | { kind: 'fullset'; set: string; name: string; pieces: { id: number; name: string; rolls: Rolls; defense?: number }[] }
   | { kind: 'base'; code: string; name: string; sockets: number; ethereal: boolean; defense?: number; superior?: ModPick; auto?: ModPick; skills: { skill: number; level: number }[] }
@@ -305,7 +305,17 @@ function readTemplate(kind: TemplateKind, id: number, lines: string[], warnings:
 }
 
 /** Reads each roll of an item's properties from the listing's lines (uniques, set items and runewords alike). */
-function readRolls(slots: RollSlot[], lines: string[], warnings: string[], errors: string[], baseMaxAc = 0): { rolls: Rolls; fit: number } {
+function readRolls(
+  slots: RollSlot[],
+  lines: string[],
+  warnings: string[],
+  errors: string[],
+  baseMaxAc = 0,
+  /** Runewords: what the socketed runes add to a slot's line (Tal's +30% Poison Resist in a helm), by slot key. */
+  offsets: Record<string, number> = {},
+  /** Explains a number above a slot's range (a superior base's Enhanced Defense on top): the slot's own roll. */
+  overflow?: (s: RollSlot, v: number) => number | undefined,
+): { rolls: Rolls; fit: number } {
   const used = new Set<number>();
   const rolls: Rolls = {};
   let seen = 0, total = 0;
@@ -354,7 +364,7 @@ function readRolls(slots: RollSlot[], lines: string[], warnings: string[], error
     used.add(r.line);
     seen++;
     // "ease" (requirements) and other negative rolls read as a positive number on the listing
-    let v = s.lo < 0 && r.value > 0 ? -r.value : r.value;
+    let v = (s.lo < 0 && r.value > 0 ? -r.value : r.value) - (offsets[s.key] ?? 0);
     // Traderie lists flat defense ("+159 Defense") as the item's total, base included: take the base out
     if (s.prop[0] === 'ac' && v > s.hi) {
       const flat = v - baseMaxAc;
@@ -363,6 +373,7 @@ function readRolls(slots: RollSlot[], lines: string[], warnings: string[], error
         v = flat;
       }
     }
+    if (v > s.hi && overflow) v = overflow(s, v) ?? v;
     if (v < s.lo || v > s.hi) errors.push(`"${s.label}" reads ${v}, outside its range (${s.lo}–${s.hi}). The listing may be edited or misread.`);
     else rolls[s.key] = v;
   }
@@ -408,8 +419,29 @@ function readRuneword(row: number, lines: string[], warnings: string[], errors: 
   }
   const [code, def] = base;
   if (ethereal && !canBuildEthereal('base', code)) errors.push(`A ${def.name} can't be ethereal.`);
-  const r = readRolls(runewordSlots(row), lines, warnings, errors, def.maxAc ?? 0);
-  return { kind: 'runeword', row, name: rw.name, code, base: def.name, rolls: r.rolls, ethereal };
+  // the listing shows totals: the runes' own socket bonuses are included (Tal in a helm: +30% Poison Resist)
+  const slotKind = def.flags.includes('W') ? 'weapon' : isType(code, 'shld') ? 'shield' : 'helm';
+  const offsets: Record<string, number> = {};
+  const slots = runewordSlots(row);
+  for (const rune of rw.runes)
+    for (const m of GD.gems[rune]?.[slotKind] ?? []) {
+      const s = slots.find((x) => x.prop[0] === m.code && (x.prop[1] || '') === (m.param || ''));
+      if (s) offsets[s.key] = (offsets[s.key] ?? 0) + m.max;
+    }
+  // Enhanced Defense or Damage above the runeword's range: a superior base's own 5–15% on top
+  let superior: ModPick | undefined;
+  const overflow = (s: RollSlot, v: number) => {
+    const row = superiorRows(code).find((i) => GD.superior[i].mods.length === 1 && GD.superior[i].mods[0][0] === s.prop[0]);
+    if (row === undefined) return undefined;
+    const [, , lo, hi] = GD.superior[row].mods[0];
+    const extra = Math.min(hi, Math.max(lo, v - s.hi));
+    if (v - extra < s.lo || v - extra > s.hi) return undefined;
+    superior = { row, values: [extra] };
+    warnings.push(`Read ${v}% as a superior ${def.name} (+${extra}%) with ${v - extra}% from ${rw.name}.`);
+    return v - extra;
+  };
+  const r = readRolls(slots, lines, warnings, errors, def.maxAc ?? 0, offsets, overflow);
+  return { kind: 'runeword', row, name: rw.name, code, base: def.name, rolls: r.rolls, ethereal, superior };
 }
 
 /** A whole set: every piece, with whatever rolls the listing shows (usually none; then random rolls). */
@@ -530,6 +562,8 @@ function readBase(code: string, lines: string[], warnings: string[], errors: str
       break;
     }
     if (defense === undefined && shown > show(def.maxAc)) errors.push(`Defense ${shown} is higher than a ${def.name} can roll.`);
+    // superior with Enhanced Defense always has the top defense (the game stores it as the top + 1)
+    if (ed && defense !== undefined) defense = def.maxAc + 1;
   }
   return { kind: 'base', code, name: def.name, sockets, ethereal, defense, superior, auto, skills };
 }

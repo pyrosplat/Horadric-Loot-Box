@@ -546,8 +546,12 @@ function encodeBase(code: string, opts: BaseOptions, runeword?: Encode['runeword
   let defense: number | undefined;
   if (def.flags.includes('A')) {
     const lo = def.minAc ?? 0, hi = def.maxAc ?? lo;
-    defense = opts.defense ?? hi;
-    if (defense < lo || defense > hi) throw new Error(`${def.name} defense is ${lo}\u2013${hi}`);
+    // superior with Enhanced Defense: the game stores the top defense + 1 (a Superior Demonhead shows 176 at +14%)
+    if (opts.superior && GD.superior[opts.superior.row]?.mods.some((m) => m[0] === 'ac%')) defense = hi + 1;
+    else {
+      defense = opts.defense ?? hi;
+      if (defense < lo || defense > hi) throw new Error(`${def.name} defense is ${lo}\u2013${hi}`);
+    }
   }
   const stats: ItemStat[] = [];
   if (opts.superior) {

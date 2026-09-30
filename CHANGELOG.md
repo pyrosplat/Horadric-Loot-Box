@@ -6,6 +6,7 @@
 
 - Runewords, magic, rare and crafted items can now be traded.
 - Magic and rare items are checked against the affixes their base can really roll. Crafted items are made exactly as listed.
+- Runeword listings count the runes' own bonuses and a superior base's Enhanced Defense/Damage (a Cure showing 108% Enhanced Defense).
 - Listings with an OR now drop the option you can't pay with (like a Random Minor Key) and let you pay the other.
 - Better screenshot reading: smaller screenshots, stats run together ("+31Tolife") and stat names that look like runeword names.
 - Fixed skill tab bonuses ("+3 to Eldritch Skills") being saved to the wrong tab.

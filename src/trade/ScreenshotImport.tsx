@@ -32,7 +32,7 @@ function build(r: ListingResult): Built {
       const d = GD.items[it.code];
       // the base's own defense isn't on the listing: a random roll in its range, like any roll it doesn't show
       const defense = d?.minAc !== undefined && d.maxAc !== undefined ? d.minAc + Math.floor(Math.random() * (d.maxAc - d.minAc + 1)) : undefined;
-      return { item: createRunewordItem(it.row, it.code, it.rolls, { ethereal: it.ethereal, defense }) };
+      return { item: createRunewordItem(it.row, it.code, it.rolls, { ethereal: it.ethereal, defense, superior: it.superior }) };
     }
     if (it.kind === 'magic' || it.kind === 'rare' || it.kind === 'crafted')
       return { item: createAffixItem(it.code, { quality: it.kind, affixes: it.affixes, craft: it.craft, auto: it.auto, sockets: it.sockets, ethereal: it.ethereal, defense: it.defense, exactStats: it.exact }) };
@@ -47,7 +47,7 @@ function build(r: ListingResult): Built {
 function itemLabel(it: NonNullable<ListingResult['item']>): string {
   if (it.kind === 'base') return `${it.ethereal ? 'Ethereal ' : ''}${it.superior ? 'Superior ' : ''}${it.name}${it.sockets ? ` (${it.sockets} sockets)` : ''}`;
   if (it.kind === 'unique' || it.kind === 'set') return `${it.ethereal ? 'Ethereal ' : ''}${it.name}`;
-  if (it.kind === 'runeword') return `${it.name} (${it.ethereal ? 'Ethereal ' : ''}${it.base})`;
+  if (it.kind === 'runeword') return `${it.name} (${it.ethereal ? 'Ethereal ' : ''}${it.superior ? 'Superior ' : ''}${it.base})`;
   if (it.kind === 'magic' || it.kind === 'rare' || it.kind === 'crafted') return `${it.ethereal ? 'Ethereal ' : ''}${it.name}${it.sockets ? ` (${it.sockets} sockets)` : ''}`;
   return it.name;
 }
