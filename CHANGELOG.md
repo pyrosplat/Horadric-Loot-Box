@@ -1,15 +1,26 @@
 # Changelog
 
+## 2.2.0
+
+**Selling and item trades**
+
+- New Buy / Sell switch in Trade. In Sell, import a buyer's listing and sell them the item, runes or gems at their offer/ give prices.
+- Drag what the buyer wants into your offer and pick which of their options you get. Rolls the listing shows are minimums; any other roll counts.
+- Prices can include items: pay for a listing with a unique, set item, full set, runeword or base (any rolls).
+- Older listings show the date they were posted - these now count toward the 3-day limit.
+- When a price is cut off that option is left out and you pay one of the others.
+- Better screenshot reading: small grey post times and cards with the seller above the picture.
+
 ## 2.0.1
 
 **Trading: more items**
 
 - Runewords, magic, rare and crafted items can now be traded.
 - Magic and rare items are checked against the affixes their base can really roll. Crafted items are made exactly as listed.
-- Runeword listings count the runes' own bonuses and a superior base's Enhanced Defense/Damage (a Cure showing 108% Enhanced Defense).
-- Listings with an OR now drop the option you can't pay with (like a Random Minor Key) and let you pay the other.
-- Better screenshot reading: smaller screenshots, stats run together ("+31Tolife") and stat names that look like runeword names.
-- Fixed skill tab bonuses ("+3 to Eldritch Skills") being saved to the wrong tab.
+- Runeword listings count the runes' own bonuses and a superior base's Enhanced Defense/Damage
+- Listings with an OR now drop the option you can't pay with
+- Better screenshot reading: smaller screenshots, stats run together and stat names that look like runeword names.
+
 
 ## 2.0.0
 

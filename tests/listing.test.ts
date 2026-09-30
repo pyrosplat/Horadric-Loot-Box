@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { GD, affixRows, buildableTemplates, createAffixItem, createRunewordItem, createBaseItem, createTemplateItem, describeItem, rollSlots, type Rolls } from '../src/core';
 import { askText, readAsk, readListing, readTags, tagErrors, type ListingItem } from '../src/trade/listing';
+import { columnLines } from '../src/trade/ocr';
 
 type AffixListing = Extract<ListingItem, { affixes: unknown }>;
 
@@ -226,6 +227,38 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
     expect(text).toEqual(expect.arrayContaining(['Defense: 499', '+108% Enhanced Defense', 'Poison Resist +52%']));
   });
 
+  test('Immortal King full set, seller above the picture, posted an hour ago', () => {
+    const r = read('immortal-king-fullset');
+    expect(r.errors).toEqual([]);
+    expect(r.item).toMatchObject({ kind: 'fullset', name: 'Immortal King (full set, 6 pieces)' });
+    expect(r.age).toBe(3600);
+    // the OCR keeps the listing's column even when the seller's name shares the title's row
+    const w = (text: string, x0: number, y0: number) => ({ text, x0, x1: x0 + text.length * 8, y0, y1: y0 + 14 });
+    expect(columnLines([w('Cycako', 80, 30), w('1', 300, 32), w('X', 312, 32), w('Immortal', 326, 32), w('King', 400, 32), w('(187)', 150, 60), w('Softcore', 300, 60)], 800)).toEqual([
+      '1 X Immortal King',
+      'Softcore',
+    ]);
+  });
+
+  test('buyers\u2019 listings ("I Give", "Offering"): you sell them the item for their offer', () => {
+    const beast = read('beast-they-give');
+    expect([beast.direction, beast.errors]).toEqual(['sell', []]);
+    expect(beast.want).toEqual([{ code: '', qty: 1, name: 'Beast', item: expect.objectContaining({ kind: 'runeword', code: '7wa' }) }]);
+    expect(askText(beast.ask ?? [])).toBe('1× Ber Rune or 1× Zod Rune or 1× Sur Rune + 1× Lo Rune');
+    // no stats shown: any Beast in a Berserker Axe
+    const offering = read('beast-offering');
+    expect([offering.direction, offering.errors, askText(offering.ask ?? [])]).toEqual(['sell', [], '2× Lo Rune']);
+    expect((offering.want![0].item as { atLeast?: unknown[] }).atLeast).toEqual([]);
+    expect(read('ber-they-give').want).toEqual([{ code: 'r30', qty: 1, name: 'Ber Rune' }]);
+    expect(askText(read('ber-offering').ask ?? [])).toBe('1× Lo Rune + 1× Ohm Rune + 1× Vex Rune');
+    // the rolls it shows are minimums, and it has to be ethereal; no "rolled at random" notes when selling
+    const andy = read('andariel-they-give');
+    expect(andy.want![0].item).toMatchObject({ kind: 'unique', ethereal: true });
+    expect((andy.want![0].item as { atLeast: unknown[] }).atLeast).toHaveLength(3);
+    expect(andy.warnings).toEqual([]);
+    expect(read('annihilus').direction).toBe('buy');
+  });
+
   test('runewords are read', () => {
     const death = read('death-runeword-nonladder');
     expect(death.errors).toEqual(['This is a Non Ladder listing. Only Ladder trades are allowed.']);
@@ -245,12 +278,23 @@ describe('listing age', () => {
     const base = ['1 X Ber Rune', 'Reign Of The Warlock · PC · Ladder · Softcore', 'Trading For', '1 X Jah Rune'];
     expect(readListing([...base, 'in 50 seconds']).errors).toEqual([]);
     expect(readListing([...base, 'in1second']).age).toBe(1);
+    expect(readListing([...base, '5s hours ago']).age).toBe(5 * 3600);
     expect(readListing([...base, '2 days ago']).errors).toEqual([]);
     expect(readListing([...base, 'in 3 days']).errors).toEqual([]);
     expect(readListing([...base, '4 days ago']).errors).toEqual(['This listing is 4 days old. Only listings from the last 3 days count.']);
     expect(readListing([...base, 'a month ago']).errors[0]).toMatch(/30 days old/);
     expect(readListing(base).errors).toEqual(["Couldn't find when the listing was posted."]);
     expect(readListing(base.concat('in 5 minutes')).item).toMatchObject({ kind: 'rune', code: 'r30', quantity: 1 });
+  });
+
+  test('older listings show the date they were posted: counted in days up to today', () => {
+    const base = ['1 X Ber Rune', 'Reign Of The Warlock · PC · Ladder · Softcore', 'Trading For', '1 X Jah Rune'];
+    const now = new Date(2026, 8, 30, 9, 22); // September 30, 2026
+    expect(readListing([...base, 'September 26, 2026'], undefined, now).errors).toEqual(['This listing is 4 days old. Only listings from the last 3 days count.']);
+    expect(readListing([...base, 'September 27, 2026'], undefined, now).errors).toEqual([]);
+    expect(readListing([...base, 'Sep 28'], undefined, now).age).toBe(2 * 86400);
+    expect(readListing([...base, '9/20/2026'], undefined, now).age).toBe(10 * 86400);
+    expect(readListing([...base, 'Oct 2'], undefined, now).age).toBe(363 * 86400); // no year and in the future: last year's
   });
 });
 
@@ -300,6 +344,7 @@ describe('the price: what the listing is trading for', () => {
       'celtic-knot-magic': '1× Lem Rune',
       'amulet-magic': '1× Ist Rune',
       'cure-runeword-superior': '1× Ber Rune',
+      'immortal-king-fullset': '1× Ist Rune',
       'call-to-arms-runeword': '1× Ber Rune + 1× Ohm Rune',
       'blood-gloves-crafted-nonladder': '9× Jah Rune',
       annihilus: '1× Ist Rune',
@@ -315,15 +360,25 @@ describe('the price: what the listing is trading for', () => {
     expect(askText(readAsk(['{& 9X)ah Rune']).options)).toBe('9× Jah Rune');
   });
 
+  test('"… 2 more": the option it belongs to is left out, since part of it is hidden', () => {
+    const r = readAsk(['1 X Ist Rune OR', '1 X Mal Rune', '1 X Lem Rune OR', '1 X Lem Rune', '1 X Um Rune', '... 2 more']);
+    expect(askText(r.options)).toBe('1× Ist Rune or 1× Mal Rune + 1× Lem Rune');
+    expect(r.skipped[0]).toMatch(/Left out the "1 X Lem Rune \+ 1 X Um Rune \+ … 2 more not shown" option: the rest of it isn't shown/);
+  });
+
   test('several things together, OR, offers and payments that aren\u2019t runes', () => {
     expect(askText(readAsk(['2 X Ber Rune', '1 X Jah Rune']).options)).toBe('2× Ber Rune + 1× Jah Rune');
     expect(askText(readAsk(['1 X Lo Rune OR', '1 X Ohm Rune', '3 X Perfect Amethyst']).options)).toBe('1× Lo Rune or 1× Ohm Rune + 3× Perfect Amethyst');
     expect(askText(readAsk(['1 X Key of Terror']).options)).toBe('1× Key of Terror');
     expect(readAsk(['Make an Offer']).problems[0]).toMatch(/asks for offers/);
-    expect(readAsk(['1 X Annihilus']).problems[0]).toMatch(/Only runes, gems, keys and parts/);
+    // items by name can be paid with too: any Annihilus, one of each Immortal King piece
+    expect(readAsk(['1 X Annihilus']).options).toEqual([[{ code: '', qty: 1, name: 'Annihilus', item: { kind: 'unique', id: expect.any(Number) } }]]);
+    expect(readAsk(['1 X Immortal King']).options[0]).toHaveLength(6);
+    expect(readAsk(['1 X Grand Bargain']).problems[0]).toMatch(/doesn't know that item/);
     // an option that can't be paid is left out when another one can: pay the Pul
     const pul = readAsk(['1 X Pul Rune OR', '1 X Random Minor Key']);
-    expect([askText(pul.options), pul.problems, pul.skipped]).toEqual(['1× Pul Rune', [], ['1 X Random Minor Key']]);
+    expect([askText(pul.options), pul.problems]).toEqual(['1× Pul Rune', []]);
+    expect(pul.skipped).toEqual(['Left out the "1 X Random Minor Key" option: the app doesn\'t know that item.']);
     expect(askText(readAsk(['1 X Random Minor Key OR', '1 X Pul Rune']).options)).toBe('1× Pul Rune');
     const r2 = readListing(['1 X Eye Grand Charm', 'Reign Of The Warlock - Ladder - PC - Softcore', '+1 To Elemental Skills (Druid Only)', 'Trading For', '1 X Pul Rune OR', '1 X Random Minor Key', '1 minute ago']);
     expect(r2.errors).toEqual([]);

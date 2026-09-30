@@ -26,12 +26,12 @@ Trade in single player for items listed on Traderie, at the listing's price. Tur
 
 [![Offline trading demo (click to play)](docs/screenshots/trade.png)](docs/videos/trade.mp4)
 
-1. Paste (Ctrl+V) or drop a Traderie screenshot. It's read on your computer; nothing is uploaded.
-2. The listing must be PC, Ladder, Reign of the Warlock, posted in the last 3 days, and match your Softcore/Hardcore file.
-3. Drag the runes, gems or keys it asks for into **Your offer**, then **Accept trade**.
-4. Drag what you got from **Received** into a stash, character or vault, and save.
+- **Buy:** paste (Ctrl+V) or drop a Traderie listing ("Trading For"), drag the runes, gems, keys or items it asks for into **Your offer**, then **Accept trade**.
+- **Sell:** switch to **Sell**, import a buyer's listing ("I Give" / "Offering"), drag in what they want, pick what you get, then **Sell**.
+- What you get lands in **Received**; drag it into a stash, character or vault and save.
+- Listings must be PC, Ladder, Reign of the Warlock, posted in the last 3 days, and match your Softcore/Hardcore file. Screenshots are read on your computer; nothing is uploaded.
 
-Works with uniques, set items (and full sets), runewords, magic, rare and crafted items, bases, runes, gems, keys and uber parts. Every roll is checked against the item's real range; rolls the listing doesn't show are random.
+Works with uniques, set items (and full sets), runewords, magic, rare and crafted items, bases, runes, gems, keys and uber parts. Rolls are checked against the item's real range; rolls a listing doesn't show are random when buying and don't matter when selling. Magic, rare and crafted items can be bought but not sold yet.
 
 ## Getting started
 

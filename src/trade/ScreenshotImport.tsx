@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GD, createAffixItem, createBaseItem, createRunewordItem, createTemplateItem, type D2Item } from '../core';
+import { GD, createAffixItem, createBaseItem, createRunewordItem, createTemplateItem, wantName, type D2Item } from '../core';
 import { useStore } from '../ui/context';
 import { ItemCard, useTooltip } from '../ui/Tooltip';
-import { MAX_LISTING_AGE_DAYS, askText, readListing, type ListingResult } from './listing';
+import { MAX_LISTING_AGE_DAYS, askText, readListing, type AskItem, type ListingResult } from './listing';
 import { displayItem } from './TradeGrid';
 import { ItemThumb } from '../ui/ItemArt';
 
@@ -52,25 +52,61 @@ function itemLabel(it: NonNullable<ListingResult['item']>): string {
   return it.name;
 }
 
-/** "Trading for: [Ist] 1× Ist Rune or [Ohm] 1× Ohm Rune" */
-export function AskLine({ ask, matched }: { ask: NonNullable<ListingResult['ask']>; matched?: number }) {
+const thumbs = new Map<string, D2Item | null>();
+/** A picture for one thing in a price: the rune or gem, or the named item (any rolls). */
+function thumbOf(a: AskItem): D2Item | undefined {
+  if (!a.item) return displayItem(a.code);
+  const w = a.item;
+  const code = w.kind === 'base' || w.kind === 'runeword' ? w.code : undefined;
+  const key = JSON.stringify([w.kind, 'id' in w ? w.id : '', code ?? '']);
+  if (!thumbs.has(key)) {
+    try {
+      thumbs.set(key, w.kind === 'unique' || w.kind === 'set' ? createTemplateItem(w.kind, w.id) : code ? createBaseItem(code) : null);
+    } catch {
+      thumbs.set(key, null);
+    }
+  }
+  return thumbs.get(key) ?? undefined;
+}
+
+/**
+ * "Trading for: [Ist] 1× Ist Rune or [Ohm] 1× Ohm Rune". With `onPick` the options are buttons (selling: which of
+ * the buyer's options you take).
+ */
+export function AskLine({ ask, matched, label = 'Trading for:', picked, onPick }: { ask: AskItem[][]; matched?: number; label?: string; picked?: number; onPick?: (i: number) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-ink-300">
-      <span className="text-gold-300">Trading for:</span>
-      {ask.map((opt, i) => (
-        <span key={i} className="flex items-center gap-1.5">
-          {i > 0 && <span className="text-ink-500">or</span>}
-          <span className={`flex items-center gap-1.5 rounded border px-1.5 py-0.5 ${matched === i ? 'border-emerald-600 bg-emerald-950/40 text-emerald-200' : 'border-ink-700'}`}>
-            {opt.map((a) => (
-              <span key={a.code} className="flex items-center gap-1">
-                <ItemThumb item={displayItem(a.code)} size={18} />
-                {a.qty}× {a.name}
-              </span>
-            ))}
-            {matched === i && <span>✓</span>}
+      <span className="text-gold-300">{label}</span>
+      {ask.map((opt, i) => {
+        const on = matched === i || picked === i;
+        const cls = `flex items-center gap-1.5 rounded border px-1.5 py-0.5 ${on ? 'border-emerald-600 bg-emerald-950/40 text-emerald-200' : 'border-ink-700'} ${onPick ? 'cursor-pointer hover:border-ink-400' : ''}`;
+        const body = (
+          <>
+            {opt.map((a, k) => {
+              const img = thumbOf(a);
+              return (
+                <span key={`${a.code}:${a.name}:${k}`} className="flex items-center gap-1">
+                  {img && <ItemThumb item={img} size={18} />}
+                  {a.qty}× {a.item ? wantName(a.item) : a.name}
+                </span>
+              );
+            })}
+            {on && <span>✓</span>}
+          </>
+        );
+        return (
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-ink-500">or</span>}
+            {onPick ? (
+              <button type="button" className={cls} onClick={() => onPick(i)}>
+                {body}
+              </button>
+            ) : (
+              <span className={cls}>{body}</span>
+            )}
           </span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -131,6 +167,14 @@ export function ScreenshotImport() {
   const add = () => {
     if (state.status !== 'done' || errors.length || !state.result.item || !state.result.tags.mode || !state.result.ask) return;
     const it = state.result.item;
+    if (state.result.direction === 'sell') {
+      if (!state.result.want) return;
+      const replacing = store.trade.listing;
+      const problem = store.tradeSetListing({ name: it.name, mode: state.result.tags.mode, ask: [state.result.want], receive: state.result.ask });
+      if (problem) return store.toast('error', problem);
+      store.toast('success', `${replacing ? `Replaced ${replacing} with` : 'Added'} a buyer for ${it.name}. Drag it into your offer and pick what you get.`);
+      return setState({ status: 'idle' });
+    }
     const items =
       it.kind === 'fullset'
         ? (state.pieces ?? []).map((p) => ({ kind: 'set' as const, id: p.id, name: p.name, item: p.item }))
@@ -149,7 +193,10 @@ export function ScreenshotImport() {
   const t = r?.tags;
   // checked live, so switching the file on the other side updates it
   const modeProblem = t?.mode ? store.tradeModeProblem(t.mode) : undefined;
-  const errors = state.status === 'done' ? [...state.errors, ...(modeProblem ? [modeProblem] : [])] : [];
+  // a normal listing is for buying, a buyer's ("I Give", "Offering") for selling: it has to match the Buy / Sell switch
+  const side = store.trade.side;
+  const sideProblem = r && r.direction !== side ? (r.direction === 'sell' ? 'This listing is someone buying the item ("I Give"). Switch to Sell to sell it to them.' : 'This listing is someone selling the item ("Trading For"). Switch to Buy to buy it.') : undefined;
+  const errors = state.status === 'done' ? [...(sideProblem ? [sideProblem] : []), ...state.errors, ...(modeProblem ? [modeProblem] : [])] : [];
   return (
     <section
       className={`rounded-md border-2 p-3 ${over ? 'border-gold-400 bg-gold-600/15' : 'border-gold-600/60 bg-gold-600/[.06] shadow-[0_0_14px_rgba(201,165,74,.12)]'}`}
@@ -206,6 +253,11 @@ export function ScreenshotImport() {
                   {e}
                 </p>
               ))}
+              {sideProblem && (
+                <button className="rounded border border-gold-600/70 px-2 py-0.5 text-[12px] text-gold-200 hover:bg-gold-600/15" onClick={() => store.tradeSetSide(r!.direction)}>
+                  Switch to {r!.direction === 'sell' ? 'Sell' : 'Buy'}
+                </button>
+              )}
               {r.warnings.map((w) => (
                 <p key={w} className="text-[12px] text-amber-300">
                   {w}
@@ -214,12 +266,14 @@ export function ScreenshotImport() {
               {r.item && (
                 <div className="flex items-center gap-2 pt-0.5">
                   <span className="text-[12.5px] text-ink-200">
+                    {r.direction === 'sell' ? 'Buying: ' : ''}
                     {'quantity' in r.item ? `${r.item.quantity}× ` : ''}
                     {r.item.name}
                   </span>
                 </div>
               )}
-              {r.ask && <AskLine ask={r.ask} />}
+              {r.direction === 'sell' && r.want && <AskLine ask={[r.want]} label="They want:" />}
+              {r.ask && <AskLine ask={r.ask} label={r.direction === 'sell' ? 'They give:' : 'Trading for:'} />}
               <div className="flex gap-2 pt-1">
                 <button
                   disabled={!!errors.length || !r.item}

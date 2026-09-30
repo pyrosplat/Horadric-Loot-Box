@@ -31,6 +31,11 @@ import {
   newUid,
   createCompactItem,
   createUberItem,
+  createBaseItem,
+  createTemplateItem,
+  offerMatches,
+  pickRolls,
+  rollSlots,
   isUberCode,
   withNewId,
   occupancy,
@@ -48,6 +53,7 @@ import {
   type GridKind,
   type ItemDescription,
   type Vault,
+  type WantEntry,
 } from '../core';
 import type { Platform, SaveFileEntry, UpdateInfo } from '../platform';
 import { ArtIndex } from '../art';
@@ -150,12 +156,8 @@ export interface TradeWantItem {
 /** What can be offered as payment in a trade: runes, gems, and uber keys and parts. */
 export const tradeGood = (i: D2Item) => !i.sockets.length && ((i.compact && (!!i.def?.flags.includes('R') || !!i.def?.flags.includes('g'))) || isUberCode(i.code));
 
-/** One thing an imported listing asks for: "1 X Ist Rune". */
-export interface TradeAsk {
-  code: string;
-  qty: number;
-  name: string;
-}
+/** One thing an imported listing asks for or gives: "1 X Ist Rune", or an item by name. */
+export type TradeAsk = WantEntry;
 
 /** Pane id for the optional Trade panel. */
 export const TRADE_ID = 'trade';
@@ -567,10 +569,11 @@ export class Store {
     if (!source) return { ok: false, reason: 'Source is not loaded' };
     const same = fromDocId === to.docId;
     if (to.docId === TRADE_OFFER_ID) {
-      if (!tradeGood(item)) return { ok: false, reason: 'Only runes, gems, keys and uber parts can be offered.' };
+      if (!tradeGood(item) && !this.tradeAsksItems) return { ok: false, reason: 'Only runes, gems, keys and uber parts can be offered (this trade doesn\u2019t ask for items).' };
+      if (item.mode === 6) return { ok: false, reason: 'Take it out of its socket first.' };
       if (fromDocId !== this.tradeDocId()) return { ok: false, reason: 'Pay from the file on the other side of the Trade panel.' };
       const realm = source.kind === 'vault' ? source.entries.find((e) => e.item === item)?.realm : this.realmOf(fromDocId);
-      if (realm !== 'rotw') return { ok: false, reason: 'Only Reign of the Warlock runes, gems and uber items can be offered.' };
+      if (realm !== 'rotw') return { ok: false, reason: 'Only Reign of the Warlock items can be offered.' };
       const hc = this.hardcoreOf(fromDocId, item);
       if (this.trade.mode && hc !== undefined && hc !== (this.trade.mode === 'hardcore')) return { ok: false, reason: `This listing is ${this.trade.mode}; that one is ${hc ? 'hardcore' : 'softcore'}. Softcore and hardcore never mix.` };
       const other = (this.tradeOfferBox.doc as Vault).entries[0];
@@ -831,13 +834,46 @@ export class Store {
     ask: undefined as TradeAsk[][] | undefined,
     /** The imported listing's name, for messages. */
     listing: undefined as string | undefined,
+    /** Buying (you get the listed item) or selling (someone's buying it; you give it). Kept when the trade clears. */
+    side: 'buy' as 'buy' | 'sell',
+    /** Selling: what the buyer gives, as options (Traderie's "OR"), and which one you take. */
+    receive: undefined as TradeAsk[][] | undefined,
+    pick: 0,
   };
+
+  /** Switches between buying and selling; the current trade is cleared (your offer goes back). */
+  tradeSetSide(side: 'buy' | 'sell') {
+    if (this.trade.side === side) return;
+    this.tradeClear();
+    this.trade.side = side;
+    this.emit();
+  }
+
+  /** Selling: which of the buyer's options you take. */
+  tradePick(i: number) {
+    if (!this.trade.receive?.[i]) return;
+    this.trade.pick = i;
+    this.emit();
+  }
+
+  /** Whether the trade asks for items (not just runes, gems and uber items), so the offer box takes them too. */
+  get tradeAsksItems(): boolean {
+    return !!this.trade.ask?.some((o) => o.some((a) => a.item));
+  }
 
   /**
    * Puts an imported listing in the trade, replacing any listing (and anything picked by hand) already there:
    * what it sells, its asking price and its Softcore/Hardcore tag. Returns why it can't, or undefined.
    */
-  tradeSetListing(l: { name: string; mode: 'softcore' | 'hardcore'; ask: TradeAsk[][]; want?: [string, number][]; items?: Omit<TradeWantItem, 'key'>[] }): string | undefined {
+  tradeSetListing(l: {
+    name: string;
+    mode: 'softcore' | 'hardcore';
+    ask: TradeAsk[][];
+    want?: [string, number][];
+    items?: Omit<TradeWantItem, 'key'>[];
+    /** Selling: what the buyer gives (then `ask` is the listed item you give). */
+    receive?: TradeAsk[][];
+  }): string | undefined {
     const prev = this.trade.mode;
     this.trade.mode = undefined;
     const problem = this.tradeModeProblem(l.mode);
@@ -852,6 +888,8 @@ export class Store {
       mode: l.mode,
       ask: l.ask,
       listing: l.name,
+      receive: l.receive,
+      pick: 0,
     };
     this.emit();
     return undefined;
@@ -859,9 +897,10 @@ export class Store {
 
   /** Which of the listing's price options the offer is exactly (same runes, same counts), or -1. */
   tradeAskMatch(): number {
-    const { ask, offer } = this.trade;
+    const { ask } = this.trade;
     if (!ask) return -1;
-    return ask.findIndex((opt) => opt.length === offer.size && opt.every((a) => offer.get(a.code) === a.qty));
+    const offered = this.tradeOffered;
+    return ask.findIndex((opt) => offerMatches(opt, offered));
   }
 
   /**
@@ -1001,10 +1040,21 @@ export class Store {
     return moved;
   }
 
+  /** Takes one offered item back (to the file on the other side). */
+  tradeReturnItem(item: D2Item): boolean {
+    const docId = this.tradeDocId();
+    const target = docId ? this.docs.get(docId)?.doc : undefined;
+    if (!docId || !target) return (this.toast('error', 'Open the file you paid from on the other side to take your offer back.'), false);
+    const locs = this.candidateLocs(docId, target, this.panes.find((p) => p.docId === docId)?.tab ?? 0);
+    const loc = locs.find((l) => this.check(item, TRADE_OFFER_ID, l).ok);
+    if (!loc) return (this.toast('error', "There's no room to put it back."), false);
+    return !!this.move(item, TRADE_OFFER_ID, loc);
+  }
+
   /** Empties the trade: what you offered goes back where it came from. */
   tradeClear() {
     if (this.tradeOffered.length) this.tradeReturn();
-    this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined };
+    this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined, side: this.trade.side, receive: undefined, pick: 0 };
     this.emit();
   }
 
@@ -1017,16 +1067,17 @@ export class Store {
     const problem = this.tradeProblem(docId);
     const fail = (m: string) => (this.toast('error', m), false);
     if (problem) return fail(problem);
-    const { want, items, ask } = this.trade;
-    if (!ask || (!want.size && !items.length)) return fail('Import a listing first.');
+    const { want, items, ask, receive, pick } = this.trade;
+    const selling = !!receive;
+    if (!ask || (!selling && !want.size && !items.length)) return fail('Import a listing first.');
     if (this.tradeAskMatch() < 0) {
       const text = ask.map((o) => o.map((a) => `${a.qty}× ${a.name}`).join(' + ')).join(' or ');
-      return fail(`Offer exactly what the listing asks for: ${text}.`);
+      return fail(selling ? `Offer exactly what the buyer wants: ${text}.` : `Offer exactly what the listing asks for: ${text}.`);
     }
     // the payment is what's in the offer box: all Reign of the Warlock, all softcore or all hardcore
     const paid = (this.tradeOfferBox.doc as Vault).entries;
     if (!paid.length) return fail('Drag what you pay with into your offer first.');
-    if (paid.some((p) => p.realm !== 'rotw')) return fail('Only Reign of the Warlock runes, gems and uber items can be traded.');
+    if (paid.some((p) => p.realm !== 'rotw')) return fail('Only Reign of the Warlock items can be traded.');
     const hcs = new Set(paid.map((p) => !!p.hardcore));
     if (hcs.size > 1) return fail('Your offer mixes softcore and hardcore items. Softcore and hardcore never mix.');
     const hardcore = [...hcs][0] ?? false;
@@ -1040,14 +1091,24 @@ export class Store {
       const add = (item: D2Item) => inbox.entries.push({ uid: newUid(), item, addedAt: new Date().toISOString(), source: 'Trade', realm: 'rotw', hardcore });
       for (const [code, n] of want) for (let i = 0; i < n; i++) add(isUberCode(code) ? createUberItem(code) : createCompactItem(code, 105));
       for (const w of items) add(withNewId(w.item));
+      // selling: what the buyer gives (items named without rolls get random rolls)
+      for (const a of selling ? receive![pick] ?? [] : [])
+        for (let i = 0; i < a.qty; i++) {
+          const w = a.item;
+          if (!w) add(isUberCode(a.code) ? createUberItem(a.code) : createCompactItem(a.code, 105));
+          else if (w.kind === 'unique' || w.kind === 'set') add(createTemplateItem(w.kind, w.id, pickRolls(rollSlots(w.kind, w.id), 'random'), { ethereal: w.ethereal }));
+          else if (w.kind === 'base') add(createBaseItem(w.code, { sockets: w.sockets, ethereal: w.ethereal }));
+          else throw new Error(`The app can't make ${a.name} without knowing its base.`);
+        }
     } catch (err) {
       this.undoQuiet();
       this.emit();
       return fail((err as Error).message);
     }
-    const got = [...[...want].map(([c, n]) => `${n}× ${GD.items[c]?.name ?? c}`), ...items.map((w) => w.name)].join(', ');
-    const count = [...want.values()].reduce((a, b) => a + b, 0) + items.length;
-    this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined };
+    const sold = selling ? receive![pick] ?? [] : [];
+    const got = [...[...want].map(([c, n]) => `${n}× ${GD.items[c]?.name ?? c}`), ...items.map((w) => w.name), ...sold.map((a) => `${a.qty}× ${a.name}`)].join(', ');
+    const count = [...want.values()].reduce((a, b) => a + b, 0) + items.length + sold.reduce((t, a) => t + a.qty, 0);
+    this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined, side: this.trade.side, receive: undefined, pick: 0 };
     this.toast('success', `Traded for ${got}. Drag ${count === 1 ? 'it' : 'them'} from Received into a stash, character or vault. Undo with Ctrl+Z.`);
     this.emit();
     return true;

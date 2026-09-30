@@ -84,8 +84,9 @@ export function TradeView() {
   const docId = store.tradeDocId();
   const entry = docId ? store.docs.get(docId) : undefined;
   const problem = store.tradeProblem(docId);
-  const { want, offer, items, ask } = store.trade;
-  const wanting = want.size > 0 || items.length > 0;
+  const { want, offer, items, ask, side, receive, pick } = store.trade;
+  const selling = side === 'sell';
+  const wanting = want.size > 0 || items.length > 0 || !!receive;
   const matched = store.tradeAskMatch();
   const other = entry ? docLabel(entry.doc, entry.name) : 'the other side';
 
@@ -93,38 +94,80 @@ export function TradeView() {
     ...[...want].map(([code, n]) => ({ key: `c:${code}`, item: displayItem(code), count: n, tip: `${n}× ${nameOf(code)} from the listing · right-click to remove the listing`, onRemove: () => store.tradeClear() })),
     ...items.map((w) => ({ key: w.key, item: w.item, tip: 'From the listing · right-click to remove the listing', onRemove: () => store.tradeClear() })),
   ];
-  const offerEntries: GridEntry[] = [...offer].map(([code, n]) => ({
-    key: `o:${code}`,
-    item: store.tradeOffered.find((i) => i.code === code) ?? displayItem(code),
-    count: n,
-    dragFrom: TRADE_OFFER_ID,
-    tip: `${n}× ${nameOf(code)} offered · right-click or drag back to take one back (Shift for 3)`,
-    onRemove: (k: number) => store.tradeOffer(code, -k),
-  }));
-  const canDrop = () => !!drag.item && drag.fromDocId === docId && isTradeable(drag.item.code);
+  // runes, gems and uber items share a tile per kind; items you offer (a Shako, the pieces of a set) each get their own
+  const offered = store.tradeOffered;
+  const stackable = (i: (typeof offered)[number]) => isTradeable(i.code) && (i.compact || UBER_CODES.includes(i.code));
+  const offerEntries: GridEntry[] = [
+    ...[...offer]
+      .filter(([code]) => offered.some((i) => i.code === code && stackable(i)))
+      .map(([code, n]) => ({
+        key: `o:${code}`,
+        item: offered.find((i) => i.code === code) ?? displayItem(code),
+        count: n,
+        dragFrom: TRADE_OFFER_ID,
+        tip: `${n}× ${nameOf(code)} offered · right-click or drag back to take one back (Shift for 3)`,
+        onRemove: (k: number) => store.tradeOffer(code, -k),
+      })),
+    ...offered
+      .filter((i) => !stackable(i))
+      .map((i, k) => ({ key: `i:${k}:${i.id}`, item: i, dragFrom: TRADE_OFFER_ID, tip: `${itemName(i)} offered · right-click or drag back to take it back`, onRemove: () => void store.tradeReturnItem(i) })),
+  ];
+  const canDrop = () => !!drag.item && drag.fromDocId === docId && (isTradeable(drag.item.code) || store.tradeAsksItems);
 
   return (
     <div className="space-y-3 text-[13px]">
       <div className="flex items-baseline gap-2">
         <h2 className="font-display text-lg font-semibold text-gold-300">Trade</h2>
+        <div className="flex self-center overflow-hidden rounded border border-gold-600/60 text-[12px]" role="group" aria-label="Buy or sell">
+          {(['buy', 'sell'] as const).map((s2) => (
+            <button
+              key={s2}
+              aria-pressed={side === s2}
+              onClick={() => store.tradeSetSide(s2)}
+              className={`px-3 py-0.5 ${side === s2 ? 'bg-gold-600/80 font-semibold text-black' : 'text-ink-300 hover:text-ink-100'}`}
+            >
+              {s2 === 'buy' ? 'Buy' : 'Sell'}
+            </button>
+          ))}
+        </div>
         {entry && !problem && <span className="ml-auto text-[12px] text-ink-400">Paying from and delivering to <span className="text-ink-200">{docLabel(entry.doc, entry.name)}</span></span>}
       </div>
       {problem && <p className="rounded border border-amber-800 bg-amber-900/20 px-3 py-2 text-[12.5px] text-amber-200">{problem}</p>}
 
       <ScreenshotImport />
 
-      <section className="rounded-md border border-[#2e2e2e] bg-[#161616] p-3">
-        <div className="mb-2 flex items-center gap-2">
-          <h3 className="font-display text-[10.5px] uppercase tracking-[.22em] text-[#8a8a8a]">You want</h3>
-          {store.trade.listing && <span className="truncate text-[12px] text-ink-300">{store.trade.listing}</span>}
-        </div>
-        <TradeGrid entries={wantEntries} empty="Import a Traderie listing above to see what you get here." />
-        {ask && (
-          <div className="mt-2">
-            <AskLine ask={ask} matched={matched >= 0 ? matched : undefined} />
+      {selling ? (
+        <section className="rounded-md border border-[#2e2e2e] bg-[#161616] p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <h3 className="font-display text-[10.5px] uppercase tracking-[.22em] text-[#8a8a8a]">Selling to a buyer</h3>
+            {store.trade.listing && <span className="truncate text-[12px] text-ink-300">{store.trade.listing}</span>}
           </div>
-        )}
-      </section>
+          {ask && receive ? (
+            <div className="space-y-2">
+              <AskLine ask={ask} matched={matched >= 0 ? matched : undefined} label="They want:" />
+              <AskLine ask={receive} picked={pick} onPick={(i) => store.tradePick(i)} label="You get:" />
+              <p className="text-[11px] text-ink-500">
+                {receive.length > 1 ? 'Click the option you want to get. ' : ''}Rolls the listing shows are minimums; anything it doesn&rsquo;t show can be any roll.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[12px] text-ink-500">Import a buyer&rsquo;s listing above (&ldquo;They Give&rdquo; / &ldquo;I Give&rdquo;) to sell them an item, runes or gems at their price.</p>
+          )}
+        </section>
+      ) : (
+        <section className="rounded-md border border-[#2e2e2e] bg-[#161616] p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <h3 className="font-display text-[10.5px] uppercase tracking-[.22em] text-[#8a8a8a]">You want</h3>
+            {store.trade.listing && <span className="truncate text-[12px] text-ink-300">{store.trade.listing}</span>}
+          </div>
+          <TradeGrid entries={wantEntries} empty="Import a Traderie listing above to see what you get here." />
+          {ask && (
+            <div className="mt-2">
+              <AskLine ask={ask} matched={matched >= 0 ? matched : undefined} />
+            </div>
+          )}
+        </section>
+      )}
 
       <section
         className={`rounded-md border p-3 ${over ? 'border-gold-400 bg-gold-600/10' : 'border-[#2e2e2e] bg-[#161616]'}`}
@@ -141,7 +184,16 @@ export function TradeView() {
         }}
       >
         <h3 className="mb-2 font-display text-[10.5px] uppercase tracking-[.22em] text-[#8a8a8a]">Your offer</h3>
-        <TradeGrid entries={offerEntries} empty={problem ? '' : `Drag runes, gems, keys and parts here from ${other} (Shift for 3). They leave ${other} until you trade or take them back.`} />
+        <TradeGrid
+          entries={offerEntries}
+          empty={
+            problem
+              ? ''
+              : store.tradeAsksItems
+                ? `Drag what ${selling ? 'the buyer wants' : 'the listing asks for'} here from ${other} (Shift for 3 runes or gems). It leaves ${other} until you trade or take it back.`
+                : `Drag runes, gems, keys and parts here from ${other} (Shift for 3). They leave ${other} until you trade or take them back.`
+          }
+        />
       </section>
 
       <div className="rounded-md border border-[#2e2e2e] bg-[#161616] p-3">
@@ -150,10 +202,16 @@ export function TradeView() {
             {!wanting || !ask
               ? 'Import a listing to start a trade.'
               : matched >= 0
-                ? 'Your offer is what the listing asks for.'
-                : offer.size
-                  ? 'Your offer has to be exactly one of the options the listing asks for.'
-                  : 'Drag what the listing asks for into your offer.'}
+                ? selling
+                  ? 'Your offer is what the buyer wants.'
+                  : 'Your offer is what the listing asks for.'
+                : offered.length
+                  ? selling
+                    ? 'Your offer has to be exactly what the buyer wants (at least the rolls the listing shows).'
+                    : 'Your offer has to be exactly one of the options the listing asks for.'
+                  : selling
+                    ? 'Drag what the buyer wants into your offer.'
+                    : 'Drag what the listing asks for into your offer.'}
           </span>
           <button className="ml-auto rounded px-3 py-1.5 text-[12.5px] text-ink-400 hover:text-ink-200" onClick={() => store.tradeClear()}>
             Clear
@@ -163,7 +221,7 @@ export function TradeView() {
             onClick={() => store.tradeAccept()}
             className="rounded bg-emerald-700 px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-emerald-600 disabled:bg-ink-700 disabled:text-ink-400"
           >
-            Accept trade
+            {selling ? 'Sell' : 'Accept trade'}
           </button>
         </div>
       </div>

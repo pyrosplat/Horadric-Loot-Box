@@ -96,12 +96,24 @@ interface OcrWord {
  * would otherwise mix them into the item's lines ("KoreanEasy Trading For").
  */
 export function columnLines(words: OcrWord[], width: number): string[] {
-  const rows = toRows(words);
-  const title = rows.find((r) => /^\s*\d{1,3}\s*[xX×]\b/.test(r.map((w) => w.text).join(' ')) || /^\d{1,3}[xX×]$/.test(r[0]?.text ?? ''));
-  const left = title ? title[0].x0 - width * 0.02 : 0;
+  const at = titleStart(toRows(words));
+  const left = at ? at.x0 - width * 0.02 : 0;
   return toRows(words.filter((w) => w.x0 >= left))
     .map((r) => r.map((w) => w.text).join(' ').trim())
     .filter(Boolean);
+}
+
+/**
+ * The title's first word ("1" of "1 X Immortal King"). It can share its row with the seller's name when the seller
+ * sits above the picture ("Cycako 1 X Immortal King"), so it's looked for anywhere in the row.
+ */
+function titleStart(rows: OcrWord[][]): OcrWord | undefined {
+  for (const r of rows)
+    for (let i = 0; i < r.length; i++) {
+      const t = r[i].text, next = r[i + 1]?.text ?? '';
+      if (/^\d{1,3}[xX×]$/.test(t) || (/^\d{1,3}$/.test(t) && /^[xX×]$/.test(next)) || /^\d{1,3}[xX×][A-Z]/.test(t)) return r[i];
+    }
+  return undefined;
 }
 
 /** Groups words into rows by their vertical centre, each row left to right. */
@@ -140,16 +152,27 @@ export async function readScreenshot(image: Blob, progress?: (p: number) => void
     const lines = columnLines(all, canvas.width);
     // the price strip: from "Trading For" down to "High Rune Value" (or the bottom)
     const rows = toRows(all);
-    const tf = rows.find((r) => /trading/i.test(r.map((x) => x.text).join(' ')) && /for/i.test(r.map((x) => x.text).join(' ')));
+    // the price heading: "Trading For", or "I Give" / "Offering" on a buyer's listing
+    const text = (r: OcrWord[]) => r.map((x) => x.text).join(' ');
+    const tf = rows.find((r) => (/trading/i.test(text(r)) && /for/i.test(text(r))) || /^\s*(I\s*Give|Offering)\s*$/i.test(text(r)));
+    const grey = await prepareImage(image, 'luminance');
+    // the time ("1 hour ago") is small grey text in the bottom corner that the first pass can miss: read the
+    // bottom of the card again in plain grey
+    if (!lines.some((l) => /second|minute|hour|\bday|week|month|\bago\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d/i.test(l))) {
+      const below = rows.filter((r) => tf && r[0].y0 > tf[0].y1);
+      const from = below.length ? Math.max(...below.at(-1)!.map((x) => x.y1)) : Math.round(canvas.height * 0.7);
+      const top = Math.max(0, Math.min(from, canvas.height - 40));
+      const timeWords = await words(w, grey, { left: Math.round(canvas.width / 2), top, width: Math.round(canvas.width / 2), height: canvas.height - top });
+      lines.push(...toRows(timeWords).map((r) => r.map((x) => x.text).join(' ').trim()).filter(Boolean));
+    }
     if (!tf) return { lines };
     const hr = rows.find((r) => r[0].y0 > tf[0].y1 && /value|rune value|high/i.test(r.map((x) => x.text).join(' ')));
     const top = Math.max(...tf.map((x) => x.y1)) + 2;
     const bottom = hr ? Math.min(...hr.map((x) => x.y0)) - 2 : canvas.height;
     // the listing's text column starts at the title ("1 X …"); the seller's name and stars sit left of it
-    const title = rows.find((r) => /^\s*\d{1,3}\s*[xX×]\b/.test(r.map((x) => x.text).join(' ')) || /^\d{1,3}[xX×]$/.test(r[0]?.text ?? ''));
-    const left = Math.max(0, (title ? title[0].x0 : Math.min(...tf.map((x) => x.x0))) - canvas.width * 0.05);
+    const title = titleStart(rows);
+    const left = Math.max(0, (title ? title.x0 : Math.min(...tf.map((x) => x.x0))) - canvas.width * 0.05);
     if (bottom - top < 8) return { lines };
-    const grey = await prepareImage(image, 'luminance');
     const priceWords = await words(w, grey, { left: Math.round(left), top: Math.round(top), width: Math.round(canvas.width - left), height: Math.round(bottom - top) });
     return { lines, price: toRows(priceWords).map((r) => r.map((x) => x.text).join(' ').trim()).filter(Boolean) };
   } finally {

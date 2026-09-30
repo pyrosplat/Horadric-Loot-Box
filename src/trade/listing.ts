@@ -28,7 +28,9 @@ import {
   type ItemStat,
   type AffixQuality,
   type AffixSide,
+  type ItemWant,
   type ModPick,
+  type WantEntry,
   type PropDef,
   type RollSlot,
   type Rolls,
@@ -67,12 +69,13 @@ export interface ListingTags {
 
 export type ListingItem =
   | { kind: 'rune' | 'gem' | 'uber'; code: string; name: string; quantity: number }
-  | { kind: TemplateKind; id: number; name: string; rolls: Rolls; ethereal: boolean; defense?: number }
+  /** `shown`: the rolls the listing actually shows (the others are random). */
+  | { kind: TemplateKind; id: number; name: string; rolls: Rolls; ethereal: boolean; defense?: number; shown?: string[] }
   /** A runeword ("1 X Call To Arms", "Crystal Sword" in the tags): the runeword, its base and its rolls. */
-  | { kind: 'runeword'; row: number; name: string; code: string; base: string; rolls: Rolls; ethereal: boolean; superior?: ModPick }
+  | { kind: 'runeword'; row: number; name: string; code: string; base: string; rolls: Rolls; ethereal: boolean; superior?: ModPick; shown?: string[] }
   /** A whole set listed as one item ("1 X Angelic Raiment"): every piece. */
   | { kind: 'fullset'; set: string; name: string; pieces: { id: number; name: string; rolls: Rolls; defense?: number }[] }
-  | { kind: 'base'; code: string; name: string; sockets: number; ethereal: boolean; defense?: number; superior?: ModPick; auto?: ModPick; skills: { skill: number; level: number }[] }
+  | { kind: 'base'; code: string; name: string; sockets: number; ethereal: boolean; defense?: number; superior?: ModPick; auto?: ModPick; skills: { skill: number; level: number }[]; socketsShown?: boolean }
   /** A magic, rare or crafted item: its base and the prefixes and suffixes (and crafting recipe) that make up its stats. */
   | { kind: AffixQuality; code: string; name: string; affixes: AffixPick[]; craft?: ModPick; auto?: ModPick; sockets: number; ethereal: boolean; defense?: number; exact?: ItemStat[] };
 
@@ -87,16 +90,19 @@ export interface ListingResult {
   confidence: number;
   /** How old the listing was when the screenshot was taken, in seconds (undefined: not found). */
   age?: number;
+  /**
+   * "buy": a normal listing ("Trading For"): you get the item and pay `ask`. "sell": someone buying ("I Give",
+   * "Offering"): you give them `want` (the listed item) and get one of the `ask` options.
+   */
+  direction: 'buy' | 'sell';
+  /** Selling: what you have to give (the listed item, with any rolls it shows as minimums). */
+  want?: AskItem[];
   /** What the listing is trading for: one or more options (Traderie's "OR"), each a list of runes, gems or uber items. */
   ask?: AskItem[][];
 }
 
-/** One thing a listing asks for: "1 X Ist Rune". */
-export interface AskItem {
-  code: string;
-  qty: number;
-  name: string;
-}
+/** One thing a listing asks for or gives: "1 X Ist Rune", or an item by name ("1 X Harlequin Crest"). */
+export type AskItem = WantEntry;
 
 // ---------------------------------------------------------------- text helpers
 
@@ -299,7 +305,7 @@ function hasLine(lines: string[], text: string): boolean {
   return lines.some((l) => norm(l) === n || (wordingSimilarity(l, text) > 0.85 && numbers(l).sort((a, b) => a - b).join() === want));
 }
 
-function readTemplate(kind: TemplateKind, id: number, lines: string[], warnings: string[], errors: string[]): { rolls: Rolls; fit: number } {
+function readTemplate(kind: TemplateKind, id: number, lines: string[], warnings: string[], errors: string[]): { rolls: Rolls; fit: number; shown: string[] } {
   const code = (kind === 'unique' ? GD.uniques[id] : GD.setItems[id]).code;
   return readRolls(rollSlots(kind, id), lines, warnings, errors, GD.items[code]?.maxAc ?? 0);
 }
@@ -315,8 +321,9 @@ function readRolls(
   offsets: Record<string, number> = {},
   /** Explains a number above a slot's range (a superior base's Enhanced Defense on top): the slot's own roll. */
   overflow?: (s: RollSlot, v: number) => number | undefined,
-): { rolls: Rolls; fit: number } {
+): { rolls: Rolls; fit: number; shown: string[] } {
   const used = new Set<number>();
+  const shown: string[] = [];
   const rolls: Rolls = {};
   let seen = 0, total = 0;
   for (const s of slots) {
@@ -325,7 +332,7 @@ function readRolls(
     if (s.kind === 'class' || s.kind === 'skill') {
       total++;
       const hit = s.options!.find((o) => optionText(s, o.value).some((t) => hasLine(lines, t)));
-      if (hit) (rolls[s.key] = hit.value), seen++;
+      if (hit) (rolls[s.key] = hit.value), seen++, shown.push(s.key);
       else {
         const pick = s.options![randomRoll(0, s.options!.length - 1)];
         rolls[s.key] = pick.value;
@@ -340,7 +347,7 @@ function readRolls(
         seen++;
         if (s.variable) {
           if (n < lo || n > hi) errors.push(`Sockets: ${n} is outside what this item can have (${lo}–${hi}).`);
-          else rolls[s.key] = n;
+          else (rolls[s.key] = n), shown.push(s.key);
         }
       } else if (s.variable) {
         rolls[s.key] = randomRoll(lo, hi);
@@ -375,9 +382,9 @@ function readRolls(
     }
     if (v > s.hi && overflow) v = overflow(s, v) ?? v;
     if (v < s.lo || v > s.hi) errors.push(`"${s.label}" reads ${v}, outside its range (${s.lo}–${s.hi}). The listing may be edited or misread.`);
-    else rolls[s.key] = v;
+    else (rolls[s.key] = v), shown.push(s.key);
   }
-  return { rolls, fit: total ? seen / total : 1 };
+  return { rolls, fit: total ? seen / total : 1, shown };
 }
 
 /**
@@ -441,7 +448,7 @@ function readRuneword(row: number, lines: string[], warnings: string[], errors: 
     return v - extra;
   };
   const r = readRolls(slots, lines, warnings, errors, def.maxAc ?? 0, offsets, overflow);
-  return { kind: 'runeword', row, name: rw.name, code, base: def.name, rolls: r.rolls, ethereal, superior };
+  return { kind: 'runeword', row, name: rw.name, code, base: def.name, rolls: r.rolls, ethereal, superior, shown: r.shown };
 }
 
 /** A whole set: every piece, with whatever rolls the listing shows (usually none; then random rolls). */
@@ -497,6 +504,7 @@ function readBase(code: string, lines: string[], warnings: string[], errors: str
   if (ethereal && !canBuildEthereal('base', code)) errors.push(`${def.name} can't be ethereal.`);
   const max = maxBaseSockets(code);
   let sockets = socketsOn(lines);
+  const socketsShown = sockets !== undefined;
   if (sockets === undefined) (sockets = 0), warnings.push('No sockets found on the listing; set to 0.');
   if (sockets > max) errors.push(`${def.name} can have at most ${max} sockets, the listing says ${sockets}.`), (sockets = max);
 
@@ -565,7 +573,7 @@ function readBase(code: string, lines: string[], warnings: string[], errors: str
     // superior with Enhanced Defense always has the top defense (the game stores it as the top + 1)
     if (ed && defense !== undefined) defense = def.maxAc + 1;
   }
-  return { kind: 'base', code, name: def.name, sockets, ethereal, defense, superior, auto, skills };
+  return { kind: 'base', code, name: def.name, sockets, ethereal, defense, superior, auto, skills, socketsShown };
 }
 
 // ---------------------------------------------------------------- magic, rare and crafted items
@@ -580,7 +588,7 @@ function statLines(lines: string[], title?: string): { text: string; digits: boo
   return lines
     .filter((l) => l !== title)
     .map((l) => ({ l, n: norm(l) }))
-    .filter(({ n }) => n && !isTagLine(n) && readAge([n]) === undefined && !/make an? offer|\boffers?\b|rune value|trading for/.test(n))
+    .filter(({ n }) => n && !isTagLine(n) && readAge([n]) === undefined && !/make an? offer|\boffers?\b|rune value|trading for|^i give$|^offering$|they give|they want this/.test(n))
     .filter(({ n }) => !BASE_LINE.test(n) && socketsOn([n]) === undefined && !/^eth(ereal)?\b/.test(n))
     .map(({ l, n }) => ({ text: l, digits: /\d/.test(n) }));
 }
@@ -929,15 +937,47 @@ function readAffixListing(title: string | undefined, lines: string[], titled: bo
 
 // ---------------------------------------------------------------- the whole listing
 
-/** How old a listing is, from Traderie's "in 50 seconds", "3 hours ago", "a day ago"…, in seconds. */
-export function readAge(lines: string[]): number | undefined {
+/** Where the price starts: "Trading For" on a normal listing, "I Give" or "Offering" when someone is buying. */
+const PRICE_HEADING = /^(trading for|i give|offering)\b/;
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * An older listing shows the date it was posted ("September 26, 2026", "Sep 26", "9/26/2026"): how many whole
+ * days before `now` that is, in seconds (a date with no year is the latest one not after today).
+ */
+function dateAge(l: string, now: Date): number | undefined {
+  let y: number | undefined, mo: number | undefined, d: number | undefined;
+  const named = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* (\d{1,2})(?: (\d{4}))?\b/.exec(l) ?? undefined;
+  const dayFirst = /\b(\d{1,2}) (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?: (\d{4}))?\b/.exec(l) ?? undefined;
+  const numeric = /^(\d{1,2})[ /](\d{1,2})[ /](\d{4})$/.exec(l) ?? undefined; // "9/26/2026" (norm drops the slashes)
+  if (named) (mo = MONTHS.indexOf(named[1])), (d = Number(named[2])), (y = named[3] ? Number(named[3]) : undefined);
+  else if (dayFirst) (mo = MONTHS.indexOf(dayFirst[2])), (d = Number(dayFirst[1])), (y = dayFirst[3] ? Number(dayFirst[3]) : undefined);
+  else if (numeric) (mo = Number(numeric[1]) - 1), (d = Number(numeric[2])), (y = Number(numeric[3]));
+  if (mo === undefined || d === undefined || mo < 0 || d < 1 || d > 31) return undefined;
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  let posted = Date.UTC(y ?? now.getFullYear(), mo, d);
+  if (y === undefined && posted > today) posted = Date.UTC(now.getFullYear() - 1, mo, d);
+  return Math.max(0, Math.round((today - posted) / 86400000)) * 86400;
+}
+
+/**
+ * How old a listing is, in seconds: Traderie's "in 50 seconds", "3 hours ago", "a day ago"…, or the date it was
+ * posted for older ones ("September 26, 2026"), counted in whole days up to `now` (this computer's clock).
+ */
+export function readAge(lines: string[], now: Date = new Date()): number | undefined {
   const unit: Record<string, number> = { second: 1, sec: 1, minute: 60, min: 60, hour: 3600, hr: 3600, day: 86400, week: 604800, month: 2592000, year: 31536000 };
   let found: number | undefined;
   for (const l of lines.map(norm)) {
-    const m = /\b(a|an|\d{1,3}) (second|sec|minute|min|hour|hr|day|week|month|year)s?\b/.exec(l);
+    // (a stray letter OCR adds after the number is ignored: "5s hours ago")
+    const m = /\b(a|an|\d{1,3})(?: [a-z])? (second|sec|minute|min|hour|hr|day|week|month|year)s?\b/.exec(l);
     // "in 50 seconds", "3 hours ago", or just "42 seconds" (a clipped "in")
     if (m && (/\bago\b|^in\b|\bin \d|\bin an?\b/.test(l) || l === m[0] || new RegExp(`^[a-z]{1,2} ${m[0]}$`).test(l))) found = (m[1] === 'a' || m[1] === 'an' ? 1 : Number(m[1])) * unit[m[2]];
     else if (/\bjust now\b/.test(l)) found = 0;
+    else {
+      const d = dateAge(l, now);
+      if (d !== undefined) found = d;
+    }
   }
   return found;
 }
@@ -982,6 +1022,11 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
   };
   for (const raw of lines) {
     const l = norm(raw).replace(/[)\]](?=[a-z])/g, 'j'); // OCR reads a J as ")": "9X)ah Rune"
+    // "… 2 more": the listing hides the rest of the last option, so that option can't be paid as shown
+    if (/(^|\s|\.)\d{1,2} more\b/.test(l)) {
+      cur.bad.push(`${/(\d{1,2}) more/.exec(l)![1]} more not shown`);
+      continue;
+    }
     if (/make an? offer|open to offers|\boffers?\b/.test(l)) {
       problems.push("The listing asks for offers, not a set price, so there's nothing to pay.");
       continue;
@@ -1001,11 +1046,14 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
     }
     if (or) close();
     or = endsOr;
+    const qty = /^\d+$/.test(m[1]) ? Math.max(1, Number(m[1])) : 1; // "l x" is OCR's "1 X"
     if (!best) {
-      cur.bad.push(raw.replace(/^[^0-9]*/, '').replace(/\s+or$/i, '').trim());
+      // an item by name: "1 X Harlequin Crest", "1 X Immortal King" (a whole set)
+      const items = itemsNamed(m[2], qty);
+      if (items) cur.items.push(...items);
+      else cur.bad.push(raw.replace(/^[^0-9]*/, '').replace(/\s+or$/i, '').trim());
       continue;
     }
-    const qty = /^\d+$/.test(m[1]) ? Math.max(1, Number(m[1])) : 1; // "l x" is OCR's "1 X"
     const same = cur.items.find((a) => a.code === best!.code);
     if (same) same.qty += qty;
     else cur.items.push({ code: best.code, qty, name: best.name });
@@ -1013,10 +1061,64 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
   close();
   // an option with something that can't be paid here ("1 X Random Minor Key") is dropped when another option can be
   const good = opts.filter((o) => !o.bad.length);
-  const skipped = opts.filter((o) => o.bad.length).map((o) => [...o.bad, ...o.items.map((a) => `${a.qty} X ${a.name}`)].join(' + '));
-  if (!good.length) for (const t of skipped) problems.push(`The listing asks for "${t}". Only runes, gems, keys and parts can be paid with here.`);
+  const why = (o: { bad: string[] }) =>
+    o.bad.some((b) => / more not shown$/.test(b)) ? "the rest of it isn't shown on the listing" : "the app doesn't know that item";
+  const text = (o: { items: AskItem[]; bad: string[] }) => [...o.items.map((a) => `${a.qty} X ${a.name}`), ...o.bad.map((b) => (/ more not shown$/.test(b) ? `… ${b}` : b))].join(' + ');
+  const skipped = opts.filter((o) => o.bad.length).map((o) => `Left out the "${text(o)}" option: ${why(o)}.`);
+  if (!good.length) for (const o of opts) problems.push(`The listing asks for "${text(o)}". ${why(o)[0].toUpperCase()}${why(o).slice(1)}.`);
   return { options: good.map((o) => o.items), problems, skipped: good.length ? skipped : [] };
 }
+
+/**
+ * Items a price names ("Harlequin Crest", "Immortal King"): uniques, set items, whole sets (one of each piece),
+ * runewords and bases, any rolls. Undefined when the name isn't one of these.
+ */
+function itemsNamed(name: string, qty: number): AskItem[] | undefined {
+  const [hit] = matchName([name]);
+  if (!hit || hit[1] < 0.9) return undefined;
+  const c = hit[0];
+  const one = (item: ItemWant, label: string): AskItem => ({ code: '', qty, name: label, item });
+  if (c.kind === 'unique' || c.kind === 'set') return [one({ kind: c.kind, id: c.ref as number }, (c.kind === 'unique' ? GD.uniques : GD.setItems)[c.ref as number].name)];
+  if (c.kind === 'runeword') return [one({ kind: 'runeword', id: c.ref as number }, GD.runewords.find((r) => r.row === c.ref)!.name)];
+  if (c.kind === 'base') return [one({ kind: 'base', code: c.ref as string }, GD.items[c.ref as string].name)];
+  if (c.kind === 'fullset')
+    return Object.entries(GD.setItems)
+      .filter(([, si]) => si.setKey === c.ref)
+      .map(([id, si]) => one({ kind: 'set', id: Number(id) }, si.name));
+  return undefined;
+}
+
+/**
+ * What you give when you sell to a buyer's listing: the item it names, with the rolls it shows as minimums
+ * (any roll when it shows none), ethereal only when it says so. Or why it can't be sold here.
+ */
+export function titleWant(it: ListingItem): AskItem[] | string {
+  const atLeast = (slots: RollSlot[], rolls: Rolls, shown: string[] = []) =>
+    slots
+      .filter((sl) => shown.includes(sl.key) && sl.kind === 'value' && sl.variable && sl.prop[0] !== 'ease')
+      .flatMap((sl) => propStatsAt(sl.prop[0], sl.prop[1], sl.prop[2], sl.prop[3], rolls[sl.key]).stats);
+  const one = (item: ItemWant): AskItem[] => [{ code: '', qty: 1, name: it.name, item }];
+  switch (it.kind) {
+    case 'rune':
+    case 'gem':
+    case 'uber':
+      return [{ code: it.code, qty: it.quantity, name: it.name }];
+    case 'unique':
+    case 'set':
+      return one({ kind: it.kind, id: it.id, ethereal: it.ethereal || undefined, atLeast: atLeast(rollSlots(it.kind, it.id), it.rolls, it.shown) });
+    case 'runeword':
+      return one({ kind: 'runeword', id: it.row, code: it.code || undefined, ethereal: it.ethereal || undefined, atLeast: atLeast(runewordSlots(it.row), it.rolls, it.shown) });
+    case 'base':
+      return one({ kind: 'base', code: it.code, sockets: it.socketsShown ? it.sockets : undefined, ethereal: it.ethereal || undefined });
+    case 'fullset':
+      return it.pieces.map((p) => ({ code: '', qty: 1, name: p.name, item: { kind: 'set', id: p.id } }));
+    default:
+      return "Selling magic, rare and crafted items isn't supported yet: there's no way to check their stats against the listing.";
+  }
+}
+
+/** Whether the app can make what a price option gives you (a runeword needs its base, which a price doesn't name). */
+export const canReceive = (opt: AskItem[]) => opt.every((a) => !a.item || a.item.kind !== 'runeword');
 
 /** "1× Ist Rune", "1× Lo Rune or 1× Ohm Rune" */
 export const askText = (options: AskItem[][]) => options.map((o) => o.map((a) => `${a.qty}× ${a.name}`).join(' + ')).join(' or ');
@@ -1025,25 +1127,44 @@ export const askText = (options: AskItem[][]) => options.map((o) => o.map((a) =>
  * Reads a listing's text lines (from OCR) into tags, an item, its price and any problems. `price` is a second
  * reading of just the "Trading For" strip (see ./ocr.ts); whichever reading of the price is complete wins.
  */
-export function readListing(rawLines: string[], price?: string[]): ListingResult {
-  const r = readListingItem(rawLines);
+export function readListing(rawLines: string[], price?: string[], now: Date = new Date()): ListingResult {
+  const r = readListingItem(rawLines, now);
   const all = rawLines.map((l) => l.trim()).filter(Boolean);
-  const cut = all.findIndex((l) => /^trading for\b/.test(norm(l)));
+  const cut = all.findIndex((l) => PRICE_HEADING.test(norm(l)));
+  // "I Give" / "Offering": someone buying the listed item
+  const direction = cut >= 0 && !/^trading for\b/.test(norm(all[cut])) ? 'sell' : 'buy';
   // no "Trading For": a "Make an Offer" listing, or a price that wasn't in the screenshot
   const tail = cut >= 0 ? all.slice(cut + 1).filter((l) => !/rune value|^in \d|\bago\b|^in\d/.test(norm(l))) : all.filter((l) => /make an? offer/.test(norm(l)));
   const reads = [price ?? [], tail].map(readAsk);
   const best = reads.find((a) => a.options.length && !a.problems.length) ?? reads.find((a) => a.options.length) ?? reads.find((a) => a.problems.length) ?? reads[0];
   if (best.problems.length) r.errors.push(...best.problems);
-  else if (!best.options.length) r.errors.push("Couldn't read what the listing is trading for.");
-  else for (const t of best.skipped) r.warnings.push(`Left out the "${t}" option: only runes, gems, keys and parts can be paid with here.`);
-  return { ...r, ask: best.options.length ? best.options : undefined };
+  else if (!best.options.length) r.errors.push(direction === 'sell' ? "Couldn't read what the buyer is offering." : "Couldn't read what the listing is trading for.");
+  else r.warnings.push(...best.skipped);
+  let options = best.options;
+  if (direction === 'buy') return { ...r, direction, ask: options.length ? options : undefined };
+
+  // selling: the listed item is what you give; rolls it doesn't show don't matter, so no "rolled at random" notes
+  const warnings = r.warnings.filter((w) => !/at random|every roll is random|No sockets found/.test(w));
+  const errors = [...r.errors];
+  let want: AskItem[] | undefined;
+  if (r.item) {
+    const w = titleWant(r.item);
+    if (typeof w === 'string') errors.push(w);
+    else want = w;
+  }
+  const cant = options.filter((o) => !canReceive(o));
+  if (cant.length) {
+    options = options.filter(canReceive);
+    for (const o of cant) (options.length ? warnings : errors).push(`Left out the "${askText([o])}" option: a runeword can't be made without knowing its base.`);
+  }
+  return { ...r, errors, warnings, direction, want, ask: options.length ? options : undefined };
 }
 
-function readListingItem(rawLines: string[]): ListingResult {
+function readListingItem(rawLines: string[], now: Date): Omit<ListingResult, 'direction'> {
   const all = rawLines.map((l) => l.trim()).filter(Boolean);
   // "Trading For" starts the price; the seller, "High Rune Value" and the time follow. None of it is the item.
-  const cut = all.findIndex((l) => /^trading for\b/.test(norm(l)));
-  const age = readAge(all);
+  const cut = all.findIndex((l) => PRICE_HEADING.test(norm(l)));
+  const age = readAge(all, now);
   const itemLines = cut >= 0 ? all.slice(0, cut) : all;
   // the title: "1 X Demonhead" (the number is how many)
   // (OCR sometimes puts a stray mark in front: "© 1X Blood Ring")
@@ -1094,7 +1215,7 @@ function readListingItem(rawLines: string[]): ListingResult {
       const ethereal = lines.some((l) => /\bethereal\b/.test(norm(l)));
       if (ethereal && !canBuildEthereal(c.kind, (c.kind === 'unique' ? GD.uniques : GD.setItems)[c.ref as number].code)) err.push("This item can't be ethereal.");
       const name = buildableTemplates(c.kind).find((t) => t.id === c.ref)!.name;
-      item = { kind: c.kind, id: c.ref as number, name, rolls: r.rolls, ethereal, defense: templateDefense(c.kind, c.ref as number, lines, r.rolls, ethereal, warn, err) };
+      item = { kind: c.kind, id: c.ref as number, name, rolls: r.rolls, ethereal, defense: templateDefense(c.kind, c.ref as number, lines, r.rolls, ethereal, warn, err), shown: r.shown };
     } else if (c.kind === 'base') item = readBase(c.ref as string, lines, warn, err);
     else if (c.kind === 'fullset') item = readFullSet(c.ref as string, lines, warn, err);
     else if (c.kind === 'runeword') item = readRuneword(c.ref as number, lines, warn, err);

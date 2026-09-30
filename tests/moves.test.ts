@@ -1132,3 +1132,106 @@ describe('runewords, magic, rare and crafted items', () => {
     expect(describeItem(it).lines.map((l) => l.text)).toContain('+3 to Eldritch Skills (Warlock Only)');
   });
 });
+
+describe('selling to buyers, and paying with items', () => {
+  const sid = 't/ModernSharedStashSoftCoreV2.d2i';
+  const listing = (f: string) => fs.readFileSync(`${__dirname}/fixtures/listings/${f}.txt`, 'utf8').split('\n');
+  /** Puts an item in the shared stash (through Received, the way a trade would) and returns it as it sits there. */
+  const stashItem = async (item: D2Item) => {
+    const { TRADE_ID } = await import('../src/state/store');
+    const { newUid } = await import('../src/core');
+    (store.tradeInbox.doc as { entries: unknown[] }).entries.push({ uid: newUid(), item, addedAt: '', source: 'test', realm: 'rotw', hardcore: false });
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    store.tradeDeliverAll();
+    return modern().tabs.flatMap((t) => t.items).find((i) => i.id === item.id)!;
+  };
+  const setup = async (side: 'buy' | 'sell', f: string) => {
+    const { TRADE_ID } = await import('../src/state/store');
+    const { readListing } = await import('../src/trade/listing');
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    store.tradeSetSide(side);
+    const r = readListing(listing(f), undefined, new Date());
+    expect(r.errors, f).toEqual([]);
+    return r;
+  };
+
+  test('selling an ethereal Andariel’s Visage for the buyer’s Ohm: rolls at least what the listing shows', async () => {
+    const { TRADE_OFFER_ID } = await import('../src/state/store');
+    const { buildableTemplates, createTemplateItem, rollSlots } = await import('../src/core');
+    const r = await setup('sell', 'andariel-they-give');
+    expect(r.direction).toBe('sell');
+    const id = buildableTemplates('unique').find((t) => t.name === "Andariel's Visage")!.id;
+    const key = (code: string) => rollSlots('unique', id).find((s) => s.prop[0] === code)!.key;
+    const make = (ed: number, eth: boolean) => createTemplateItem('unique', id, { [key('ac%')]: ed, [key('lifesteal')]: 9, [key('str')]: 29 }, { ethereal: eth });
+    const good = await stashItem(make(130, true));
+    const weak = await stashItem(make(110, true)); // less Enhanced Defense than the listing's 118
+    const plain = await stashItem(make(150, false)); // not ethereal
+    expect(store.tradeSetListing({ name: r.item!.name, mode: 'softcore', ask: [r.want!], receive: r.ask })).toBeUndefined();
+    const ohm = modern().tabs.flatMap((t) => t.items).filter((i) => i.code === 'r27').reduce((n, i) => n + (i.advancedStackSize ?? 1), 0);
+    for (const bad of [weak, plain]) {
+      expect(store.move(bad, sid, { docId: TRADE_OFFER_ID, area: 'vault' })).toBe(true);
+      expect(store.tradeAskMatch()).toBe(-1);
+      expect(store.tradeReturnItem(store.tradeOffered[0])).toBe(true);
+    }
+    expect(store.move(good, sid, { docId: TRADE_OFFER_ID, area: 'vault' })).toBe(true);
+    expect(store.tradeAskMatch()).toBe(0);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.tradeReceived.map((i) => i.code)).toEqual(['r27']);
+    store.tradeDeliverAll();
+    const after = modern().tabs.flatMap((t) => t.items);
+    expect(after.some((i) => i.id === good.id)).toBe(false); // sold
+    expect(after.filter((i) => i.code === 'r27').reduce((n, i) => n + (i.advancedStackSize ?? 1), 0)).toBe(ohm + 1);
+    expect(store.trade.side).toBe('sell'); // stays on Sell for the next one
+  });
+
+  test('selling a Ber for 2 Lo + Ohm + Ist, and picking one of a buyer’s options', async () => {
+    const r = await setup('sell', 'ber-they-give');
+    const { createCompactItem } = await import('../src/core');
+    await stashItem(createCompactItem('r30', 105));
+    store.tradeSetListing({ name: 'Ber Rune', mode: 'softcore', ask: [r.want!], receive: r.ask });
+    store.tradeOffer('r30', 1);
+    expect(store.tradeAskMatch()).toBe(0);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.tradeReceived.map((i) => i.code).sort()).toEqual(['r24', 'r27', 'r28', 'r28']);
+    store.tradeDeliverAll();
+    // Beast: Ber, Zod, or Sur + Lo; you choose
+    const b = await setup('sell', 'beast-they-give');
+    expect(b.ask!.map((o) => o.map((a) => a.code).join('+'))).toEqual(['r30', 'r33', 'r29+r28']);
+    store.tradeSetListing({ name: 'Beast', mode: 'softcore', ask: [b.want!], receive: b.ask });
+    store.tradePick(2);
+    expect(store.trade.pick).toBe(2);
+  });
+
+  test('paying for an item with an item: any Harlequin Crest counts for "1 X Harlequin Crest"', async () => {
+    const { TRADE_OFFER_ID } = await import('../src/state/store');
+    const { buildableTemplates, createTemplateItem, createCompactItem, pickRolls, rollSlots } = await import('../src/core');
+    const { readListing } = await import('../src/trade/listing');
+    await setup('buy', 'annihilus');
+    const r = readListing(['1 X Arachnid Mesh', 'Reign Of The Warlock - Ladder - PC - Softcore', 'Trading For', '1 X Harlequin Crest', 'in 5 minutes'], undefined, new Date());
+    expect(r.errors).toEqual([]);
+    const shako = buildableTemplates('unique').find((t) => t.name === 'Harlequin Crest')!.id;
+    const mesh = buildableTemplates('unique').find((t) => t.name === 'Arachnid Mesh')!.id;
+    const offered = await stashItem(createTemplateItem('unique', shako, pickRolls(rollSlots('unique', shako), 'random')));
+    await stashItem(createCompactItem('r22', 105));
+    store.tradeSetListing({ name: 'Arachnid Mesh', mode: 'softcore', ask: r.ask!, items: [{ kind: 'unique', id: mesh, name: 'Arachnid Mesh', item: createTemplateItem('unique', mesh) }] });
+    // the offer box takes items now that the price names one; a rune on top isn't what's asked
+    store.tradeOffer('r22', 1);
+    expect(store.move(offered, sid, { docId: TRADE_OFFER_ID, area: 'vault' })).toBe(true);
+    expect(store.tradeAskMatch()).toBe(-1);
+    store.tradeOffer('r22', -1);
+    expect(store.tradeAskMatch()).toBe(0);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.tradeReceived.map((i) => i.uniqueId)).toEqual([mesh]);
+  });
+
+  test('a listing’s direction has to match Buy / Sell, and items can’t be offered for rune-only prices', async () => {
+    const { TRADE_OFFER_ID } = await import('../src/state/store');
+    const { buildableTemplates, createTemplateItem } = await import('../src/core');
+    await setup('buy', 'annihilus');
+    const shako = buildableTemplates('unique').find((t) => t.name === 'Harlequin Crest')!.id;
+    const it = await stashItem(createTemplateItem('unique', shako));
+    store.tradeSetListing({ name: 'Ist', mode: 'softcore', ask: [[{ code: 'r22', qty: 1, name: 'Um Rune' }]], want: [['r24', 1]] });
+    expect(store.check(it, sid, { docId: TRADE_OFFER_ID, area: 'vault' }).reason).toMatch(/doesn’t ask for items/);
+  });
+});
