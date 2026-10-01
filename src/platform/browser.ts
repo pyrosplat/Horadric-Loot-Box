@@ -1,3 +1,4 @@
+import { createBrowserArt } from '../art/browser';
 import type { Platform, SaveFileEntry } from './types';
 
 // File System Access API (Chrome / Edge). Paths are "<folderId>/<fileName>".
@@ -111,6 +112,7 @@ export const browserPlatform: Platform = {
   async isGameRunning() {
     return false;
   },
+  art: typeof document !== 'undefined' ? createBrowserArt() : undefined,
   async deleteVault(path) {
     await this.listVaults('');
     if (!vaultDir) throw new Error('Vault folder not available');

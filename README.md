@@ -7,7 +7,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 ## Features
 
 - **Two-pane muling:** drag characters, shared stashes or vaults onto either side, then drag items between them.
-- **Equip from anywhere:** onto a character, weapon swap, mercenary or belt, with real item tooltips and art from your own game files.
+- **Equip from anywhere:** onto a character, weapon swap, mercenary or belt, with real item tooltips.
 - **Unlimited vaults** with search, filters and sorting.
 - **Holy grail tabs** for uniques, sets, runewords, runes and gems, counted across your whole account (matches the game's Chronicle).
 - **Stats and roll ranges** on every item, found or not (★ = perfect roll).
@@ -33,6 +33,8 @@ Trade in single player for items listed on Traderie, at the listing's price. Tur
 
 Works with uniques, set items (and full sets), runewords, magic, rare and crafted items, bases, runes, gems, keys and uber parts. Rolls are checked against the item's real range; rolls a listing doesn't show are random when buying and don't matter when selling. Magic, rare and crafted items can be bought but not sold yet.
 
+**In your browser:** [Horadric Trading Post](https://pyrosplat.github.io/Horadric-Loot-Box/) is the Trade panel as a web page — nothing to install. Drop in your shared stash (`.d2i`) or a character (`.d2s`), trade, then save. Chrome and Edge write straight back to the file; other browsers download it for you to put back. Your saves never leave your computer. Close the game before saving.
+
 ## Getting started
 
 1. Close Diablo II: Resurrected.
@@ -40,7 +42,7 @@ Works with uniques, set items (and full sets), runewords, magic, rare and crafte
 3. Drag a character, stash or vault from the sidebar onto the left or right side.
 4. Move items, then click **Save**.
 
-**Game art (optional):** extract the game's `data` folder with [CascView](http://www.zezula.net/en/casc/main.html). Then set its location in **Settings → Items → Game art**. Without it, items show as tiles.
+**Game art (optional):** items show as tiles. To see item pictures, set your D2R install folder in **Settings → Items** (the web page needs the game's `data` folder unpacked with [CascView](http://www.zezula.net/en/casc/main.html)). Art is read from your own files; nothing is shipped or uploaded.
 
 **Saves:** `%USERPROFILE%\Saved Games\Diablo II Resurrected` on Windows, or the same path inside your Proton/Wine prefix on Linux.<br>
 **Vaults** are kept in a `HoradricLootBox-Vaults` folder inside your save folder, so backing up your saves backs up your vaults too. Vaults from older versions are copied there on first launch.<br>
@@ -74,6 +76,8 @@ npm run desktop:build  # installers
 Desktop builds need a C/C++ compiler: the Visual Studio Build Tools on Windows, or g++/clang elsewhere. Linux builds also need `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf`. Pushing a `v*` tag builds signed Windows and Linux installers as a draft GitHub release; see [RELEASING.md](RELEASING.md). The app updates itself from published releases.
 
 For a new game patch, replace the tables in `vendor/d2r-3.3/`, then run `npm run gamedata && npm test`.
+
+**Web page:** `npm run dev:web` runs it locally; `npm run build:web` builds it into `dist-web`. Pushing a `v*` tag publishes it to GitHub Pages (one-time: **Settings → Pages → Source: GitHub Actions**).
 
 ## Credits
 

@@ -181,7 +181,7 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
           {store.settings.tradeEnabled && (
             <button
               onClick={() => store.openTrade()}
-              title="Open the Trade panel, with your Reign of the Warlock shared stash's Stackables tab to pay from"
+              title="Open the Trade panel, with your Reign of the Warlock shared stash's Runes tab to pay from"
               className={`mr-1 rounded border px-3 py-1 text-[13px] font-semibold ${
                 store.panes.some((p) => p.docId === TRADE_ID) ? 'border-gold-400 bg-gold-600/25 text-gold-200' : 'border-gold-600/70 bg-gold-600/10 text-gold-300 hover:border-gold-400 hover:bg-gold-600/20'
               }`}
@@ -253,7 +253,7 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
   );
 }
 
-function HeaderBtn({ children, ...p }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function HeaderBtn({ children, ...p }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button {...p} className="rounded px-2.5 py-1.5 text-[13px] text-ink-300 hover:bg-ink-800 hover:text-ink-200 disabled:cursor-not-allowed disabled:opacity-40">
       {children}
@@ -261,7 +261,7 @@ function HeaderBtn({ children, ...p }: React.ButtonHTMLAttributes<HTMLButtonElem
   );
 }
 
-function Toasts() {
+export function Toasts() {
   const store = useStore();
   return (
     <div className="pointer-events-none fixed bottom-7 right-4 z-50 flex w-96 max-w-[90vw] flex-col gap-2" aria-live="polite">
@@ -279,7 +279,7 @@ function Toasts() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-5 border-t border-ink-700 pt-4 first:mt-4 first:border-0 first:pt-0">
       <h3 className="mb-2 font-display text-[11px] uppercase tracking-[.2em] text-ink-400">{title}</h3>
@@ -288,7 +288,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-const Hint = ({ children }: { children: React.ReactNode }) => <p className="mt-1 text-[12px] leading-relaxed text-ink-500">{children}</p>;
+export const Hint = ({ children }: { children: React.ReactNode }) => <p className="mt-1 text-[12px] leading-relaxed text-ink-500">{children}</p>;
 
 function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: () => void }) {
   const store = useStore();
@@ -306,6 +306,7 @@ function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: (
               </span>
             </label>
             <ScaleSetting />
+            <SharedStashSetting />
           </Section>
           <ArtSettings />
           <TradeSettings />
@@ -349,11 +350,11 @@ const VIEWS: { id: ItemView; label: string; hint: string }[] = [
   { id: 'tiles', label: 'Classic tiles', hint: 'Coloured tiles with names' },
 ];
 
-function ArtSettings() {
+export function ArtSettings() {
   const store = useStore();
   const st = store.artStatus;
   const backend = store.platform.art;
-  const [artPath, setArtPath] = useState(store.settings.artPath ?? store.art?.info.path ?? '');
+  const [artPath, setArtPath] = useState(store.settings.artPath ?? '');
   const tone = st.state === 'ready' ? 'text-emerald-300' : st.state === 'error' || st.state === 'missing' ? 'text-amber-300' : 'text-ink-400';
   return (
     <Section title="Items">
@@ -375,51 +376,63 @@ function ArtSettings() {
         })}
       </div>
       <p className="mt-4 text-[13px] text-ink-200">Game art</p>
+      <p className={`mt-1 text-[12px] [overflow-wrap:anywhere] ${tone}`}>{st.state === 'loading' ? 'Loading…' : st.message}</p>
       {backend ? (
-        <>
-          <Hint>
-            Needs unpacked game files. Extract the game's <span className="font-mono">data</span> folder with CascView, then type or paste where it is (any drive), or browse to it.
-            Nothing is copied or shared.
-          </Hint>
-          <p className={`mt-2 text-[12px] [overflow-wrap:anywhere] ${tone}`}>{st.state === 'loading' ? 'Loading…' : st.message}</p>
-          <form
-            className="mt-2 flex gap-1.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const p = artPath.trim().replace(/^"(.*)"$/, '$1');
-              if (p) store.loadArt(p);
-            }}
-          >
-            <input
-              value={artPath}
-              onChange={(e) => setArtPath(e.target.value)}
-              placeholder="e.g. D:\D2R-Extracted"
-              aria-label="Unpacked game files folder"
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded border border-ink-600 bg-ink-950 px-2 py-1 font-mono text-[11.5px] text-ink-200 outline-none placeholder:text-ink-600 focus:border-gold-500"
-            />
-            <button type="submit" disabled={!artPath.trim()} className="rounded border border-ink-600 px-2.5 py-1 text-[12.5px] text-ink-200 hover:bg-ink-800 disabled:opacity-40">
-              Use
-            </button>
-            <button
-              type="button"
-              className="rounded border border-ink-600 px-2.5 py-1 text-[12.5px] text-ink-200 hover:bg-ink-800"
-              onClick={async () => {
-                const p = await backend.pickFolder();
-                if (p) (setArtPath(p), store.loadArt(p));
+        store.platform.id === 'tauri' ? (
+          <>
+            <Hint>
+              Optional. Choose your Diablo II: Resurrected install folder, or a folder you unpacked the game's <span className="font-mono">data</span> into with CascView. Type or paste
+              where it is, or browse to it. Nothing is copied or shared.
+            </Hint>
+            <form
+              className="mt-2 flex gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const p = artPath.trim().replace(/^"(.*)"$/, '$1');
+                if (p) store.loadArt(p);
               }}
             >
-              Browse…
-            </button>
-            {store.art && (
-              <button type="button" className="rounded px-2 py-1 text-[12.5px] text-ink-400 hover:text-ink-200" onClick={() => store.loadArt(store.art!.info.path)}>
-                Reload
+              <input
+                value={artPath}
+                onChange={(e) => setArtPath(e.target.value)}
+                placeholder="e.g. C:\Program Files (x86)\Diablo II Resurrected"
+                aria-label="Game install or unpacked game files folder"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded border border-ink-600 bg-ink-950 px-2 py-1 font-mono text-[11.5px] text-ink-200 outline-none placeholder:text-ink-600 focus:border-gold-500"
+              />
+              <button type="submit" disabled={!artPath.trim()} className="rounded border border-ink-600 px-2.5 py-1 text-[12.5px] text-ink-200 hover:bg-ink-800 disabled:opacity-40">
+                Use
               </button>
-            )}
-          </form>
-        </>
+              <button
+                type="button"
+                className="rounded border border-ink-600 px-2.5 py-1 text-[12.5px] text-ink-200 hover:bg-ink-800"
+                onClick={async () => {
+                  const p = await backend.pickFolder();
+                  if (p) (setArtPath(p), store.loadArt(p));
+                }}
+              >
+                Browse…
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <Hint>
+              Optional. Unpack the game's <span className="font-mono">data</span> folder with CascView, then choose that folder. It's read in this page; nothing is uploaded.
+            </Hint>
+            <button
+              className="mt-2 rounded border border-ink-600 px-2.5 py-1 text-[12.5px] text-ink-200 hover:bg-ink-800"
+              onClick={async () => {
+                const p = await backend.pickFolder();
+                if (p) store.loadArt(p);
+              }}
+            >
+              Choose game files folder…
+            </button>
+          </>
+        )
       ) : (
-        <Hint>Game art needs the desktop app. Classic tiles are used here.</Hint>
+        <Hint>Game art needs the desktop app or a browser that can open folders. Tiles are used here.</Hint>
       )}
     </Section>
   );
@@ -541,7 +554,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Credit() {
+export function Credit() {
   return (
     <div className="pointer-events-none fixed bottom-1.5 right-3 z-40 select-none text-[11px] tracking-wide text-ink-500">
       Created by <span className="font-semibold text-ink-400">PyroSplat</span>
@@ -549,7 +562,7 @@ function Credit() {
   );
 }
 
-function ConfirmItemDelete() {
+export function ConfirmItemDelete() {
   const store = useStore();
   const p = store.pendingDelete!;
   const entry = store.docs.get(p.docId);
@@ -590,7 +603,36 @@ function ConfirmItemDelete() {
   );
 }
 
-function ScaleSetting() {
+/** Shared stash pages as one tab with a page switcher (like the game) or as a tab per page. */
+export function SharedStashSetting() {
+  const store = useStore();
+  const mode = store.settings.sharedStash ?? 'pages';
+  return (
+    <div className="mt-4">
+      <p className="text-[13px] text-ink-200">Shared stash pages</p>
+      <div className="mt-2 grid grid-cols-2 gap-1 rounded-md bg-ink-950 p-1" role="radiogroup" aria-label="Shared stash pages">
+        {(
+          [
+            ['pages', 'One tab, page switcher'],
+            ['tabs', 'A tab per page'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="radio"
+            aria-checked={mode === id}
+            onClick={() => store.setSettings({ sharedStash: id })}
+            className={`rounded px-2 py-1.5 text-[12.5px] transition ${mode === id ? 'bg-gold-500 font-semibold text-ink-950' : 'text-ink-300 hover:bg-ink-800'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ScaleSetting() {
   const store = useStore();
   const v = store.settings.uiScale ?? 1;
   const set = (n: number) => {

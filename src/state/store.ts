@@ -18,6 +18,8 @@ import {
   equipPlacement,
   firstFreeBeltSlot,
   inStackablesTab,
+  boardOf,
+  STACK_BOARDS,
   takeFromStack,
   isBoardStackable,
   stackCount,
@@ -115,6 +117,8 @@ export interface Settings {
   grailEth: boolean;
   /** Interface scale (1 = 100%). */
   uiScale: number;
+  /** Shared stash pages: one Shared tab with a page switcher (like the game), or a tab per page. */
+  sharedStash?: 'pages' | 'tabs';
   /** Collections count runes and jewels socketed into items ("made" runes). */
   grailSocketed: boolean;
   /** Look for a new release on GitHub when the app starts. */
@@ -200,8 +204,17 @@ const POT_LABEL: Record<string, string> = {
 };
 export const potLabel = (pot: string) => POT_LABEL[pot] ?? pot;
 
+/** How an app uses the store: the desktop app loads a whole save folder; the web trade page only dropped files. */
+export interface StoreOptions {
+  /** Settings to start from before the saved ones are applied (e.g. Trade always on). */
+  defaults?: Partial<Settings>;
+  /** Load and create vaults when a folder opens (default true). */
+  vaults?: boolean;
+}
+
 export class Store {
   platform: Platform;
+  readonly options: StoreOptions;
   folder?: string;
   files: SaveFileEntry[] = [];
   docs = new Map<string, LoadedDoc>();
@@ -218,9 +231,10 @@ export class Store {
   private listeners = new Set<() => void>();
   private toastSeq = 0;
 
-  constructor(platform: Platform) {
+  constructor(platform: Platform, options: StoreOptions = {}) {
     this.platform = platform;
-    this.settings = { ...this.settings, ...savedSettings() };
+    this.options = options;
+    this.settings = { ...this.settings, ...options.defaults, ...savedSettings() };
   }
 
   subscribe = (fn: () => void) => {
@@ -305,24 +319,22 @@ export class Store {
     return this.settings.itemView !== 'tiles' && !!this.art;
   }
 
-  /** Opens the game's artwork: the saved folder, else the first detected install. Never throws. */
+  /**
+   * Opens the item artwork from the game files the player chose in Settings. Items show as tiles until they choose
+   * some; nothing is read automatically. Never throws.
+   */
   async loadArt(path?: string) {
     const backend = this.platform.art;
-    if (!backend) {
-      this.artStatus = { state: 'off', message: 'Game art needs the desktop app.' };
+    const target = path ?? this.settings.artPath;
+    if (!backend || !target) {
+      this.art = undefined;
+      this.artStatus = { state: 'off', message: 'Items show as tiles.' };
       this.emit();
       return;
     }
     this.artStatus = { state: 'loading', message: 'Reading game data…' };
     this.emit();
     try {
-      let target = path ?? this.settings.artPath;
-      if (!target) target = (await backend.detectInstalls())[0];
-      if (!target) {
-        this.art = undefined;
-        this.artStatus = { state: 'missing', message: 'Not set up yet. Choose your unpacked game files below.' };
-        return;
-      }
       const info = await backend.open(target);
       const idx = new ArtIndex(info, backend.url);
       if (!idx.listed) await this.probeArt(idx);
@@ -379,24 +391,14 @@ export class Store {
       this.docs.clear();
       this.history = [];
       for (const f of this.files) await this.loadFile(f);
-      for (const v of await this.platform.listVaults(folder).catch(() => [])) await this.loadVault(v);
-      if (![...this.docs.values()].some((d) => d.doc?.kind === 'vault')) this.addVault('MainVault', false, false);
-      const docs = [...this.docs.values()].filter((d) => d.doc);
-      const stash = docs.find((d) => d.doc?.kind === 'stash' && (d.doc as D2SharedStash).modern && !(d.doc as D2SharedStash).hardcore) ?? docs.find((d) => d.doc?.kind === 'stash');
-      const chars = docs
-        .filter((d) => d.doc?.kind === 'character')
-        .sort((a, b) => {
-          const ca = a.doc as D2Character, cb = b.doc as D2Character;
-          return Number(cb.gameVersion === 3) - Number(ca.gameVersion === 3) || cb.level - ca.level;
-        });
-      // start with the fullest vault on the left and the most recently played character on the right
-      const modified = new Map(this.files.map((f) => [f.path, f.modified ?? 0]));
-      const known = [...modified.values()].some(Boolean);
-      const char = known ? [...chars].sort((a, b) => (modified.get(b.path) ?? 0) - (modified.get(a.path) ?? 0))[0] : chars[0];
-      const vault = docs.filter((d) => d.doc?.kind === 'vault').sort((a, b) => (b.doc as Vault).entries.length - (a.doc as Vault).entries.length)[0];
-      this.panes = [{ docId: (vault ?? stash)?.id, tab: 0 }, { docId: (char ?? stash)?.id, tab: 0 }];
+      this.files = this.files.filter((f) => this.docs.has(f.path));
+      if (this.options.vaults !== false) {
+        for (const v of await this.platform.listVaults(folder).catch(() => [])) await this.loadVault(v);
+        if (![...this.docs.values()].some((d) => d.doc?.kind === 'vault')) this.addVault('MainVault', false, false);
+      }
+      this.arrangePanes();
       this.gameRunning = await this.platform.isGameRunning().catch(() => false);
-      if (this.files.length === 0) this.toast('info', 'No .d2s or .d2i files found in that folder.');
+      if (this.files.length === 0) this.toast('info', this.emptyFolderMessage);
       if (!this.art) void this.loadArt();
       else if (!this.art.listed) void this.probeArt(this.art).then(() => this.emit());
     } catch (e) {
@@ -405,6 +407,38 @@ export class Store {
       this.busy = false;
       this.emit();
     }
+  }
+
+  /** Shown when a folder has nothing this app can open. */
+  protected emptyFolderMessage = 'No .d2s or .d2i files found in that folder.';
+
+  /** Whether gold bars offer Transfer (moving gold between stashes, characters and vaults). */
+  goldTransfers = true;
+
+  /** Where traded items can go, for the Trade panel's hints. */
+  tradeDestination = 'a stash, character or vault';
+
+  /** Which files an app keeps after loading (all by default). `doc` is undefined when the file couldn't be read. */
+  protected accepts(_doc: AnyDoc | undefined, _file: SaveFileEntry): boolean {
+    return true;
+  }
+
+  /** What the two panes show after a folder opens. */
+  protected arrangePanes() {
+    const docs = [...this.docs.values()].filter((d) => d.doc);
+    const stash = docs.find((d) => d.doc?.kind === 'stash' && (d.doc as D2SharedStash).modern && !(d.doc as D2SharedStash).hardcore) ?? docs.find((d) => d.doc?.kind === 'stash');
+    const chars = docs
+      .filter((d) => d.doc?.kind === 'character')
+      .sort((a, b) => {
+        const ca = a.doc as D2Character, cb = b.doc as D2Character;
+        return Number(cb.gameVersion === 3) - Number(ca.gameVersion === 3) || cb.level - ca.level;
+      });
+    // start with the fullest vault on the left and the most recently played character on the right
+    const modified = new Map(this.files.map((f) => [f.path, f.modified ?? 0]));
+    const known = [...modified.values()].some(Boolean);
+    const char = known ? [...chars].sort((a, b) => (modified.get(b.path) ?? 0) - (modified.get(a.path) ?? 0))[0] : chars[0];
+    const vault = docs.filter((d) => d.doc?.kind === 'vault').sort((a, b) => (b.doc as Vault).entries.length - (a.doc as Vault).entries.length)[0];
+    this.panes = [{ docId: (vault ?? stash)?.id, tab: 0 }, { docId: (char ?? stash)?.id, tab: 0 }];
   }
 
   private async loadFile(f: SaveFileEntry) {
@@ -417,6 +451,7 @@ export class Store {
     } catch (e) {
       entry.error = (e as Error).message;
     }
+    if (!this.accepts(entry.doc, f)) return;
     this.docs.set(entry.id, entry);
   }
 
@@ -814,8 +849,11 @@ export class Store {
         for (const it of d.mercItems) add(it, e.id, `${name} · mercenary`, false);
       } else
         d.tabs.forEach((t, i) => {
-          const tab = t.type === StashTabType.Advanced ? 'Stackables' : `Shared ${i + 1}`;
-          for (const it of t.items) add(it, e.id, `${name} · ${tab}`, false);
+          const page = d.tabs.slice(0, i + 1).filter((x) => x.type === StashTabType.Normal).length;
+          for (const it of t.items) {
+            const tab = t.type === StashTabType.Advanced ? STACK_BOARDS.find((b) => b.id === boardOf(it.code))!.label : `Shared page ${page}`;
+            add(it, e.id, `${name} · ${tab}`, false);
+          }
         });
     }
     this.heldCache = { rev: this.rev, vaultId, list };
@@ -1109,7 +1147,7 @@ export class Store {
     const got = [...[...want].map(([c, n]) => `${n}× ${GD.items[c]?.name ?? c}`), ...items.map((w) => w.name), ...sold.map((a) => `${a.qty}× ${a.name}`)].join(', ');
     const count = [...want.values()].reduce((a, b) => a + b, 0) + items.length + sold.reduce((t, a) => t + a.qty, 0);
     this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined, side: this.trade.side, receive: undefined, pick: 0 };
-    this.toast('success', `Traded for ${got}. Drag ${count === 1 ? 'it' : 'them'} from Received into a stash, character or vault. Undo with Ctrl+Z.`);
+    this.toast('success', `Traded for ${got}. Drag ${count === 1 ? 'it' : 'them'} from Received into ${this.tradeDestination}. Undo with Ctrl+Z.`);
     this.emit();
     return true;
   }

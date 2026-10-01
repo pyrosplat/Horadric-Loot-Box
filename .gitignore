@@ -1,6 +1,7 @@
 # dependencies and build output
 node_modules/
 dist/
+dist-web/
 src-tauri/target/
 src-tauri/gen/
 *.tsbuildinfo

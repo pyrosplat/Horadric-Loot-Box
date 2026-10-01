@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.0
+
+- **Trade in your browser:** Horadric Trading Post, a web page with the Trade panel. Drop in your shared stash or a character, trade, and save — straight back to the file in Chrome and Edge, or as a download in other browsers. A copy of the original is downloaded before the first save.
+- **Game art is now opt-in:** items show as tiles until you set your D2R folder in Settings → Items (if you had art before without choosing a folder, set it there once). The app no longer looks for your install on its own. On the web page, pick a folder you unpacked the game's data into; Chrome and Edge remember it.
+- **Stash tabs like the game:** Shared (with a page switcher), Gems, Materials and Runes. Prefer a tab per shared page? Switch it in Settings. The Chronicle tab is no longer shown.
+
 ## 2.2.0
 
 **Selling and item trades**

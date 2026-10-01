@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import fs from 'node:fs';
 import { ArtIndex, norm, parseAssetMap, type ArtInfo } from '../src/art';
-import { GD, Quality, arrangeStackables, parseStash, STACKABLE_SLOTS, STACKABLES_COLS, STACKABLES_ROWS, type D2Item } from '../src/core';
+import { GD, Quality, arrangeStackables, parseStash, STACKABLE_SLOTS, BOARD_SIZE, type D2Item } from '../src/core';
 import { socketLayout } from '../src/ui/ItemArt';
 
 const item = (code: string, extra: Partial<D2Item> = {}): D2Item => ({ code, def: GD.items[code], quality: Quality.Normal, sockets: [], socketCount: 0, ...extra }) as D2Item;
@@ -76,29 +76,36 @@ describe('resolving an item to a sprite', () => {
 });
 
 describe('stackables board', () => {
-  test('every slot is a real stackable item and no two slots overlap', () => {
+  test('every slot is a real stackable item and no two slots overlap on a board', () => {
     const cells = new Set<string>();
     for (const s of STACKABLE_SLOTS) {
       expect(GD.items[s.code], s.code).toBeDefined();
-      expect(s.x).toBeLessThan(STACKABLES_COLS);
+      expect(s.x).toBeLessThan(BOARD_SIZE[s.board].cols);
       for (let dy = 0; dy < s.h; dy++) {
-        const k = `${s.x},${s.y + dy}`;
+        const k = `${s.board}:${s.x},${s.y + dy}`;
         expect(cells.has(k), k).toBe(false);
         cells.add(k);
       }
     }
-    expect(STACKABLES_ROWS).toBe(10);
+    expect(BOARD_SIZE).toEqual({ gems: { cols: 7, rows: 5 }, materials: { cols: 9, rows: 4 }, runes: { cols: 9, rows: 4 } });
     expect(new Set(STACKABLE_SLOTS.map((s) => s.code)).size).toBe(STACKABLE_SLOTS.length);
   });
 
-  test('runes fill the first rows in order and gems follow', () => {
+  test('laid out like the game: runes in order, a column per gem, materials left and right', () => {
     const at = (code: string) => STACKABLE_SLOTS.find((s) => s.code === code)!;
-    expect(at('r01')).toMatchObject({ x: 0, y: 0 });
-    expect(at('r30')).toMatchObject({ x: 9, y: 2 });
-    expect(at('r33')).toMatchObject({ x: 2, y: 3 });
-    expect(at('gcv')).toMatchObject({ x: 3, y: 3 });
-    expect(at('rvl')).toMatchObject({ x: 9, y: 6 });
-    expect(at('pk1')).toMatchObject({ x: 0, y: 7, h: 2 });
+    expect(at('r01')).toMatchObject({ board: 'runes', x: 0, y: 0 });
+    expect(at('r10')).toMatchObject({ board: 'runes', x: 0, y: 1 });
+    expect(at('r33')).toMatchObject({ board: 'runes', x: 5, y: 3 });
+    expect(at('gcw')).toMatchObject({ board: 'gems', x: 0, y: 0 }); // chipped diamond, top left
+    expect(at('gpv')).toMatchObject({ board: 'gems', x: 4, y: 4 }); // perfect amethyst
+    expect(at('skz')).toMatchObject({ board: 'gems', x: 6, y: 4 }); // perfect skull, bottom right
+    expect(at('pk1')).toMatchObject({ board: 'materials', x: 0, y: 0, h: 2 });
+    expect(at('mbr')).toMatchObject({ board: 'materials', x: 2, y: 2 });
+    expect(at('rvl')).toMatchObject({ board: 'materials', x: 1, y: 3 });
+    expect(at('ua5')).toMatchObject({ board: 'materials', x: 8, y: 0, h: 2 });
+    expect(at('xa1')).toMatchObject({ board: 'materials', x: 4, y: 2 });
+    expect(at('toa')).toMatchObject({ board: 'materials', x: 4, y: 3 });
+    expect(at('fed')).toMatchObject({ board: 'materials', x: 8, y: 3 });
   });
 
   test('covers every item the game marks as advanced-stash stackable', () => {

@@ -2,63 +2,76 @@ import { StashTabType, type D2SharedStash } from './d2i';
 import { ItemMode, StorePage, withNewId, withPlacement, withStackSize, type D2Item } from './item';
 
 /**
- * The Reign of the Warlock "Stackables" stash tab, laid out the way the game draws it: a fixed 10-column board with
- * one slot per stackable item type. Runes El→Zod, then gems by type (Amethyst, Diamond, Emerald, Ruby, Sapphire,
- * Topaz, Skull) from Chipped to Perfect, the two rejuvenation potions, the Pandemonium keys and the Uber Ancients'
- * summoning materials (both two cells tall), the uber organs, the Token of Absolution, the essences and the
- * Worldstone Shards.
+ * The Reign of the Warlock stackables stash tab, laid out the way the game draws it: one stack slot per item type,
+ * split over three boards like the in-game Gems, Materials and Runes tabs.
+ *
+ * - Gems: a column per gem (Diamond, Emerald, Ruby, Topaz, Amethyst, Sapphire, Skull), Chipped at the top to
+ *   Perfect at the bottom.
+ * - Materials: on the left the Pandemonium keys (two cells tall), the uber organs and the rejuvenation potions; on
+ *   the right the Uber Ancients' summoning materials (two cells tall), the Worldstone Shards, then the Token of
+ *   Absolution and the essences.
+ * - Runes: El to Zod, nine to a row.
  */
-export const STACKABLES_COLS = 10;
+export type StackBoard = 'gems' | 'materials' | 'runes';
 
 export interface StackSlot {
   code: string;
+  board: StackBoard;
   x: number;
   y: number;
   h: 1 | 2;
   group: 'rune' | 'gem' | 'potion' | 'key' | 'uber' | 'organ' | 'token' | 'essence' | 'shard';
 }
 
+/** Tab order and labels, as in the game. */
+export const STACK_BOARDS: { id: StackBoard; label: string }[] = [
+  { id: 'gems', label: 'Gems' },
+  { id: 'materials', label: 'Materials' },
+  { id: 'runes', label: 'Runes' },
+];
+
 const RUNES = Array.from({ length: 33 }, (_, i) => `r${String(i + 1).padStart(2, '0')}`);
-// [chipped, flawed, normal, flawless, perfect]
-const GEMS = [
-  ['gcv', 'gfv', 'gsv', 'gzv', 'gpv'], // amethyst
+const RUNE_COLS = 9;
+// one column per gem, [chipped, flawed, normal, flawless, perfect] top to bottom
+const GEM_COLUMNS = [
   ['gcw', 'gfw', 'gsw', 'glw', 'gpw'], // diamond
   ['gcg', 'gfg', 'gsg', 'glg', 'gpg'], // emerald
   ['gcr', 'gfr', 'gsr', 'glr', 'gpr'], // ruby
-  ['gcb', 'gfb', 'gsb', 'glb', 'gpb'], // sapphire
   ['gcy', 'gfy', 'gsy', 'gly', 'gpy'], // topaz
+  ['gcv', 'gfv', 'gsv', 'gzv', 'gpv'], // amethyst
+  ['gcb', 'gfb', 'gsb', 'glb', 'gpb'], // sapphire
   ['skc', 'skf', 'sku', 'skl', 'skz'], // skull
-].flat();
+];
 
 function build(): StackSlot[] {
   const slots: StackSlot[] = [];
-  let i = 0;
-  const flow = (codes: string[], group: StackSlot['group']) => {
-    for (const code of codes) {
-      slots.push({ code, x: i % STACKABLES_COLS, y: Math.floor(i / STACKABLES_COLS), h: 1, group });
-      i++;
-    }
-  };
-  flow(RUNES, 'rune');
-  flow(GEMS, 'gem');
-  flow(['rvs', 'rvl'], 'potion');
-  // row 7-8: keys and uber ancient materials are tall
-  const tallRow = Math.ceil(i / STACKABLES_COLS);
-  ['pk1', 'pk2', 'pk3'].forEach((code, n) => slots.push({ code, x: n, y: tallRow, h: 2, group: 'key' }));
-  ['ua1', 'ua2', 'ua3', 'ua4', 'ua5'].forEach((code, n) => slots.push({ code, x: 3 + n, y: tallRow, h: 2, group: 'uber' }));
-  slots.push({ code: 'dhn', x: 8, y: tallRow, h: 1, group: 'organ' });
-  slots.push({ code: 'bey', x: 9, y: tallRow, h: 1, group: 'organ' });
-  slots.push({ code: 'mbr', x: 8, y: tallRow + 1, h: 1, group: 'organ' });
-  slots.push({ code: 'toa', x: 9, y: tallRow + 1, h: 1, group: 'token' });
-  i = (tallRow + 2) * STACKABLES_COLS;
-  flow(['tes', 'ceh', 'bet', 'fed'], 'essence');
-  flow(['xa1', 'xa2', 'xa3', 'xa4', 'xa5'], 'shard');
+  RUNES.forEach((code, i) => slots.push({ code, board: 'runes', x: i % RUNE_COLS, y: Math.floor(i / RUNE_COLS), h: 1, group: 'rune' }));
+  GEM_COLUMNS.forEach((col, x) => col.forEach((code, y) => slots.push({ code, board: 'gems', x, y, h: 1, group: 'gem' })));
+  const m = (code: string, x: number, y: number, group: StackSlot['group'], h: 1 | 2 = 1) => slots.push({ code, board: 'materials', x, y, h, group });
+  // left: keys, organs, rejuvenation potions
+  ['pk1', 'pk2', 'pk3'].forEach((code, x) => m(code, x, 0, 'key', 2));
+  ['dhn', 'bey', 'mbr'].forEach((code, x) => m(code, x, 2, 'organ'));
+  ['rvs', 'rvl'].forEach((code, x) => m(code, x, 3, 'potion'));
+  // right (after a gap column): uber ancient materials, worldstone shards, token and essences
+  ['ua1', 'ua2', 'ua3', 'ua4', 'ua5'].forEach((code, n) => m(code, 4 + n, 0, 'uber', 2));
+  ['xa1', 'xa2', 'xa3', 'xa4', 'xa5'].forEach((code, n) => m(code, 4 + n, 2, 'shard'));
+  m('toa', 4, 3, 'token');
+  ['tes', 'ceh', 'bet', 'fed'].forEach((code, n) => m(code, 5 + n, 3, 'essence'));
   return slots;
 }
 
 export const STACKABLE_SLOTS: StackSlot[] = build();
 export const STACKABLE_CODES: string[] = STACKABLE_SLOTS.map((s) => s.code);
-export const STACKABLES_ROWS = Math.max(...STACKABLE_SLOTS.map((s) => s.y + s.h));
+/** Columns and rows of each board. */
+export const BOARD_SIZE: Record<StackBoard, { cols: number; rows: number }> = Object.fromEntries(
+  STACK_BOARDS.map(({ id }) => {
+    const on = STACKABLE_SLOTS.filter((s) => s.board === id);
+    return [id, { cols: Math.max(...on.map((s) => s.x)) + 1, rows: Math.max(...on.map((s) => s.y + s.h)) }];
+  }),
+) as Record<StackBoard, { cols: number; rows: number }>;
+
+/** Which board an item's stack is on (unknown stackables are shown with the materials). */
+export const boardOf = (code: string): StackBoard => STACKABLE_SLOTS.find((s) => s.code === code)?.board ?? 'materials';
 
 export function stackCount(item: D2Item): number {
   return item.advancedStackSize ?? item.quantity ?? 1;
@@ -100,7 +113,7 @@ export interface StackCheck {
 /** Can `item` (a single item, or a stack from another Stackables tab) be added to the stackables tab? */
 export function canStack(stash: D2SharedStash, tab: number, item: D2Item): StackCheck {
   const t = stash.tabs[tab];
-  if (!t || t.type !== StashTabType.Advanced) return { ok: false, reason: 'Not a Stackables tab.' };
+  if (!t || t.type !== StashTabType.Advanced) return { ok: false, reason: 'Not a Gems, Materials or Runes tab.' };
   if (item.saveVersion !== t.version) return { ok: false, reason: `Item is from a v${item.saveVersion} save; this stash is v${t.version}.` };
   if (!isBoardStackable(item)) return { ok: false, reason: 'Only runes, gems, rejuvenation potions, keys, uber parts, essences, tokens and shards stack here.' };
   if (item.advBit === undefined || item.sockets.length) return { ok: false, reason: "This item can't be stacked." };

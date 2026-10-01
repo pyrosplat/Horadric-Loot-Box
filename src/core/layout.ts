@@ -140,7 +140,7 @@ export function canDrop(
   y: number,
   ignore?: D2Item,
 ): DropCheck {
-  if (doc.kind === 'stash' && !tabIsEditable(doc, tab)) return { ok: false, reason: 'Drop runes, gems and other stackables onto the Stackables board; the Chronicle tab holds no items.' };
+  if (doc.kind === 'stash' && !tabIsEditable(doc, tab)) return { ok: false, reason: 'Drop runes, gems and materials onto the Gems, Materials or Runes tab.' };
   const common = commonChecks(doc, item, ignore, tab);
   if (!common.ok) return common;
   const { w, h } = itemSize(item);

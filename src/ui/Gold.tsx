@@ -70,14 +70,16 @@ export function GoldBar({ gref, label }: { gref: GoldRef; label: string }) {
         {label} <span className="tabular-nums text-ink-200">{fmtGold(value)}</span>
         {!vault && <span className="text-ink-500"> / {fmtGold(cap)}</span>}
       </span>
-      <button
-        className="border-l border-ink-600 px-2 py-[3px] text-[11px] text-ink-300 hover:bg-ink-800 hover:text-gold-300 disabled:cursor-not-allowed disabled:opacity-40"
-        onClick={() => setOpen((o) => !o)}
-        disabled={ro || !targets.length}
-        title={ro ? 'Read-only mode is on' : targets.length ? 'Move gold' : 'Open a character, stash or vault of the same edition on the other side, or add a vault'}
-      >
-        Transfer
-      </button>
+      {store.goldTransfers && (
+        <button
+          className="border-l border-ink-600 px-2 py-[3px] text-[11px] text-ink-300 hover:bg-ink-800 hover:text-gold-300 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => setOpen((o) => !o)}
+          disabled={ro || !targets.length}
+          title={ro ? 'Read-only mode is on' : targets.length ? 'Move gold' : 'Open a character, stash or vault of the same edition on the other side, or add a vault'}
+        >
+          Transfer
+        </button>
+      )}
       </div>
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-md border border-[#5a4520] bg-ink-900 p-3 shadow-tip">

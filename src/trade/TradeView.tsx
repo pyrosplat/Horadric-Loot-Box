@@ -54,7 +54,7 @@ function Received() {
                   onDragStart={(e) => (startDrag(store, e, it, TRADE_ID, label), tip.hide())}
                   onDragEnd={endDrag}
                   onDoubleClick={(e) => store.quickMove(it, TRADE_ID, pane, countFor(e))}
-                  onMouseMove={(e) => tip.show({ item: it, x: e.clientX, y: e.clientY, extra: 'Drag into a stash, character or vault (Shift for 3) · double-click to send to the other side' })}
+                  onMouseMove={(e) => tip.show({ item: it, x: e.clientX, y: e.clientY, extra: `Drag into ${store.tradeDestination} (Shift for 3) · double-click to send to the other side` })}
                   onMouseLeave={tip.hide}
                   className="relative flex w-[56px] cursor-grab flex-col items-center rounded-[3px] border border-emerald-700/70 bg-ink-900 px-0.5 pb-0.5 pt-1 active:cursor-grabbing"
                 >
@@ -68,7 +68,7 @@ function Received() {
           <p className="mt-2 text-[11px] text-ink-500">Drag them where you want them (Shift for 3), double-click to send to the other side, or move them all at once. Save is blocked until this box is empty.</p>
         </>
       ) : (
-        <p className="text-[12px] text-ink-500">Items you trade for show up here, ready to drag into a stash, character or vault.</p>
+        <p className="text-[12px] text-ink-500">Items you trade for show up here, ready to drag into {store.tradeDestination}.</p>
       )}
     </section>
   );
