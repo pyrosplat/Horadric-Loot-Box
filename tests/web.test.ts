@@ -82,7 +82,7 @@ describe('web trade page', () => {
     s.use('dropped/Warlock_v105.d2s');
     expect(s.currentId).toBe(STASH);
     await s.addFiles([{ name: 'Roka.d2s', data: read('Roka.d2s') }]);
-    expect(messages.at(-1)).toMatch(/offer back/);
+    expect(messages.at(-1)).toMatch(/Save or discard your changes first/);
     s.tradeClear();
     s.use('dropped/Warlock_v105.d2s');
     expect([s.currentId, s.panes[1].docId, s.trade.listing]).toEqual(['dropped/Warlock_v105.d2s', TRADE_ID, undefined]);
@@ -90,8 +90,44 @@ describe('web trade page', () => {
     s.tradeOffer('r22', 0);
     s.docs.get(STASH)!.dirty = true;
     await s.addFiles([{ name: 'Roka.d2s', data: read('Roka.d2s') }]);
-    expect(messages.at(-1)).toMatch(/Save your changes first/);
+    expect(messages.at(-1)).toMatch(/Save or discard your changes first/);
     expect(await s.addFiles([{ name: 'notes.txt', data: new Uint8Array([1]) }])).toBeUndefined();
     expect(messages.at(-1)).toMatch(/Drop a \.d2i/);
+  });
+
+  test('undoing every change puts the file back to Saved; after a save, undo makes it unsaved again', async () => {
+    const out: { data?: Uint8Array } = {};
+    const { s } = await store([{ name: 'ModernSharedStashSoftCoreV2.d2i', handle: handle(out) }]);
+    s.platform.backupFiles = async () => 'Downloads';
+    s.tradeOffer('r22', 1);
+    s.tradeOffer('r22', 1);
+    expect(s.dirtyDocs.length).toBe(1);
+    s.undo();
+    s.undo();
+    expect([s.dirtyDocs.length, s.tradeOffered.length]).toEqual([0, 0]);
+    // change, save, then undo: the file on disk has the change, so the undone state is unsaved
+    s.tradeOffer('r22', 1);
+    s.tradeClear();
+    await s.saveAll();
+    expect(s.dirtyDocs.length).toBe(0);
+    s.undo();
+    expect(s.dirtyDocs.length).toBe(1);
+  });
+
+  test('Discard changes puts every file back to how it was last saved and clears the trade', async () => {
+    const { s } = await store([{ name: 'ModernSharedStashSoftCoreV2.d2i' }, { name: 'Warlock_v105.d2s' }]);
+    const um = count(s, 'r22');
+    s.use('dropped/Warlock_v105.d2s');
+    s.use(STASH);
+    s.tradeSetListing({ name: 'Ist Rune', mode: 'softcore', ask: [[{ code: 'r22', qty: 3, name: 'Um Rune' }]], want: [['r24', 1]] });
+    s.tradeOffer('r22', 3);
+    expect(s.tradeAccept()).toBe(true);
+    expect([s.hasChanges, count(s, 'r22')]).toEqual([true, um - 3]);
+    await s.discard();
+    expect([s.hasChanges, s.tradeReceived.length, s.trade.listing, count(s, 'r22'), s.currentId]).toEqual([false, 0, undefined, um, STASH]);
+    expect(s.history.length).toBe(0);
+    // and new files load again
+    await s.addFiles([{ name: 'Roka.d2s', data: read('Roka.d2s') }]);
+    expect(s.saves.length).toBe(2);
   });
 });

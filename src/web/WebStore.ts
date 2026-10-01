@@ -1,7 +1,10 @@
-import { StashTabType, type D2Character, type D2SharedStash } from '../core';
+import { StashTabType, type D2Character, type D2SharedStash, type Vault } from '../core';
 import type { SaveFileEntry } from '../platform';
 import { DROP_FOLDER, type DroppedPlatform } from '../platform/dropped';
 import { Store, TRADE_ID, type AnyDoc, type LoadedDoc } from '../state/store';
+
+/** The web page starts at 125% (until the player changes it). */
+export const WEB_UI_SCALE = 1.25;
 
 /** Reign of the Warlock saves only: shared stashes and characters. */
 const isRotw = (doc: AnyDoc) => (doc.kind === 'stash' ? doc.modern : doc.kind === 'character' ? doc.gameVersion >= 3 : false);
@@ -20,7 +23,7 @@ export class WebStore extends Store {
   private turnedAway: string[] = [];
 
   constructor(platform: DroppedPlatform) {
-    super(platform, { vaults: false, defaults: { tradeEnabled: true } });
+    super(platform, { vaults: false, defaults: { tradeEnabled: true, uiScale: WEB_UI_SCALE } });
     this.settings.tradeEnabled = true;
   }
 
@@ -66,7 +69,7 @@ export class WebStore extends Store {
   async addFiles(list: { name: string; data: Uint8Array; modified?: number; handle?: FileSystemFileHandle }[]) {
     const saves = list.filter((f) => /\.(d2s|d2i)$/i.test(f.name));
     if (!saves.length) return this.toast('error', 'Drop a .d2i shared stash or a .d2s character.');
-    const reason = this.busyReason() ?? (this.dirtyDocs.length ? 'Save your changes first.' : undefined);
+    const reason = this.hasChanges ? 'Save or discard your changes first (Discard changes, at the top).' : undefined;
     if (reason) return this.toast('error', reason);
     this.tradeClear();
     const paths = this.platform.add(saves);
@@ -74,6 +77,22 @@ export class WebStore extends Store {
     // show the newest drop on the left when it loaded
     const shown = paths.find((p) => this.docs.has(p));
     if (shown) this.use(shown);
+  }
+
+  /** Whether there is anything to discard: unsaved changes, or a trade in progress. */
+  get hasChanges(): boolean {
+    return this.dirtyDocs.length > 0 || this.tradeReceived.length > 0 || this.tradeOffered.length > 0 || !!this.trade.listing;
+  }
+
+  /** Throws away unsaved changes and any trade in progress: every file goes back to how it was last saved. */
+  async discard() {
+    const keep = this.currentId;
+    (this.tradeOfferBox.doc as Vault).entries = [];
+    (this.tradeInbox.doc as Vault).entries = [];
+    this.tradeClear();
+    await this.openFolder(DROP_FOLDER);
+    if (keep && this.docs.has(keep)) this.use(keep);
+    this.toast('info', 'Changes discarded.');
   }
 
   /** Shows another loaded file on the left (the one you pay from and receive into). */

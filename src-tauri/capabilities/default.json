@@ -10,6 +10,7 @@
     "dialog:allow-open",
     "core:webview:allow-set-webview-zoom",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "https://traderie.com/*" }] }
   ]
 }

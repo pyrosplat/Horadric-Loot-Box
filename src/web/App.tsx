@@ -4,7 +4,7 @@ import { createDroppedPlatform } from '../platform/dropped';
 import { ArtSettings, ConfirmItemDelete, Credit, HeaderBtn, Hint, ScaleSetting, Section, SharedStashSetting, Toasts } from '../ui/App';
 import { CharacterView } from '../ui/CharacterView';
 import { StoreContext, useStore } from '../ui/context';
-import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale } from '../ui/scale';
+import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale, defaultUiScale } from '../ui/scale';
 import { StashView } from '../ui/StashView';
 import { TooltipProvider } from '../ui/Tooltip';
 import { WebStore } from './WebStore';
@@ -85,6 +85,7 @@ function Page() {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const loaded = store.saves.length > 0;
 
   const add = (files: Picked[] | null) => files?.length && store.addFiles(files);
@@ -103,8 +104,8 @@ function Page() {
       else if (mod && e.key.toLowerCase() === 'z' && !typing) (e.preventDefault(), store.undo());
       else if (mod && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
         e.preventDefault();
-        const cur = store.settings.uiScale ?? 1;
-        const next = e.key === '0' ? 1 : Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round((cur + (e.key === '-' ? -0.1 : 0.1)) * 20) / 20));
+        const cur = store.settings.uiScale ?? defaultUiScale();
+        const next = e.key === '0' ? defaultUiScale() : Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round((cur + (e.key === '-' ? -0.1 : 0.1)) * 20) / 20));
         store.setSettings({ uiScale: next });
         void applyUiScale(next);
       } else if (e.key === 'Escape') store.pendingDelete ? store.cancelDelete() : store.clearSelection();
@@ -166,6 +167,23 @@ function Page() {
             </select>
           )}
           {loaded && <HeaderBtn onClick={choose}>Add files</HeaderBtn>}
+          {loaded && store.hasChanges && (
+            <HeaderBtn
+              onClick={() => {
+                if (!confirmDiscard) {
+                  setConfirmDiscard(true);
+                  setTimeout(() => setConfirmDiscard(false), 4000);
+                  return;
+                }
+                setConfirmDiscard(false);
+                void store.discard();
+              }}
+              disabled={store.busy}
+              title="Put every file back to how it was last saved, and clear the trade"
+            >
+              {confirmDiscard ? <span className="text-amber-300">Discard all changes?</span> : 'Discard changes'}
+            </HeaderBtn>
+          )}
           <HeaderBtn onClick={() => store.undo()} disabled={!store.history.length} title="Undo (Ctrl+Z)">
             Undo
           </HeaderBtn>

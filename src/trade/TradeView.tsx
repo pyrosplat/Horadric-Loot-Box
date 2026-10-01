@@ -7,6 +7,9 @@ import { useTooltip } from '../ui/Tooltip';
 import { isTradeable, nameOf } from './goods';
 import { AskLine, ScreenshotImport } from './ScreenshotImport';
 import { TradeGrid, displayItem, type GridEntry } from './TradeGrid';
+import { isTauri } from '../platform/tauri';
+
+const TRADERIE = 'https://traderie.com/diablo2resurrected';
 
 /** Tile labels for uber items (the full name is in the tooltip). */
 const UBER_SHORT: Record<string, string> = {
@@ -130,6 +133,19 @@ export function TradeView() {
             </button>
           ))}
         </div>
+        <a
+          href={TRADERIE}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => {
+            // the desktop app opens it in the player's browser
+            if (isTauri()) (e.preventDefault(), void import('@tauri-apps/plugin-opener').then((m) => m.openUrl(TRADERIE)));
+          }}
+          className="self-center text-[12px] text-gold-400 hover:text-gold-300"
+          title="Find listings on Traderie, then paste a screenshot below"
+        >
+          Traderie ↗
+        </a>
         {entry && !problem && <span className="ml-auto text-[12px] text-ink-400">Paying from and delivering to <span className="text-ink-200">{docLabel(entry.doc, entry.name)}</span></span>}
       </div>
       {problem && <p className="rounded border border-amber-800 bg-amber-900/20 px-3 py-2 text-[12.5px] text-amber-200">{problem}</p>}

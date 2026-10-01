@@ -1,7 +1,7 @@
 {
   "name": "horadric-loot-box",
-  "version": "2.3.0",
-  "description": "Muling tool for Diablo II: Resurrected \u2014 Reign of the Warlock (save v105)",
+  "version": "2.3.1",
+  "description": "Muling tool for Diablo II: Resurrected — Reign of the Warlock (save v105)",
   "scripts": {
     "gamedata": "node scripts/build-gamedata.mjs",
     "dev": "node scripts/copy-ocr.mjs && vite",
@@ -22,6 +22,7 @@
     "@fontsource/inter": "^5.3.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-opener": "^2.7.0",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.12.0",
     "@tesseract.js-data/eng": "^1.0.0",

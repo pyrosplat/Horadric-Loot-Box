@@ -4,6 +4,13 @@ export const UI_SCALE_MIN = 0.75;
 export const UI_SCALE_MAX = 1.6;
 
 let cssZoom = 1;
+let defaultScale = 1;
+
+/** The scale used until the player picks one (the web page starts larger than the desktop app). */
+export const defaultUiScale = () => defaultScale;
+export function setDefaultUiScale(s: number) {
+  defaultScale = s;
+}
 
 /**
  * The CSS zoom in effect (1 in the desktop app, which zooms natively). Pointer maths inside zoomed content
@@ -33,8 +40,8 @@ export async function applyUiScale(scale: number) {
 /** The saved scale, read before the app's store exists (so the start screen is scaled too). */
 export function savedUiScale(): number {
   try {
-    return Number(JSON.parse(localStorage.getItem('hlb-settings') ?? localStorage.getItem('hv-settings') ?? '{}').uiScale) || 1;
+    return Number(JSON.parse(localStorage.getItem('hlb-settings') ?? localStorage.getItem('hv-settings') ?? '{}').uiScale) || defaultScale;
   } catch {
-    return 1;
+    return defaultScale;
   }
 }

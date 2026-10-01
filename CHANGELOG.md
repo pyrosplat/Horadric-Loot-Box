@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.1
+
+- **Traderie link** next to Buy / Sell in the Trade panel, to find listings quickly (opens in your browser).
+- **Web page starts at 125% zoom**; change it in Settings or with Ctrl + / Ctrl − and it's remembered. Ctrl 0 goes back to 125%.
+- **Discard changes** button on the web page: puts your files back to how they were last saved and clears the trade, so you can load other files.
+- Fixed: undoing every change now shows the file as saved again, instead of still asking you to save.
+
 ## 2.3.0
 
 - **Trade in your browser:** Horadric Trading Post, a web page with the Trade panel. Drop in your shared stash or a character, trade, and save — straight back to the file in Chrome and Edge, or as a download in other browsers. A copy of the original is downloaded before the first save.

@@ -3,7 +3,7 @@ import { GD } from '../core';
 import { availablePlatforms, type Platform } from '../platform';
 import { Store, TRADE_ID, desc, docLabel, savedSettings, type ItemView } from '../state/store';
 import { QUALITY_TEXT } from './Tooltip';
-import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale } from './scale';
+import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale, defaultUiScale } from './scale';
 import { StoreContext, useStore } from './context';
 import { Pane } from './Pane';
 import { SearchPanel } from './SearchPanel';
@@ -137,8 +137,8 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
       else if (mod && e.key.toLowerCase() === 'f') (e.preventDefault(), setSearch(true));
       else if (mod && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
         e.preventDefault();
-        const cur = store.settings.uiScale ?? 1;
-        const next = e.key === '0' ? 1 : Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round((cur + (e.key === '-' ? -0.1 : 0.1)) * 20) / 20));
+        const cur = store.settings.uiScale ?? defaultUiScale();
+        const next = e.key === '0' ? defaultUiScale() : Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round((cur + (e.key === '-' ? -0.1 : 0.1)) * 20) / 20));
         store.setSettings({ uiScale: next });
         void applyUiScale(next);
       } else if (e.key === 'Escape') store.pendingDelete ? store.cancelDelete() : store.clearSelection();
@@ -556,7 +556,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
 
 export function Credit() {
   return (
-    <div className="pointer-events-none fixed bottom-1.5 right-3 z-40 select-none text-[11px] tracking-wide text-ink-500">
+    <div className="pointer-events-none fixed bottom-2 right-6 z-40 select-none text-[11px] tracking-wide text-ink-500">
       Created by <span className="font-semibold text-ink-400">PyroSplat</span>
     </div>
   );
@@ -634,7 +634,8 @@ export function SharedStashSetting() {
 
 export function ScaleSetting() {
   const store = useStore();
-  const v = store.settings.uiScale ?? 1;
+  const v = store.settings.uiScale ?? defaultUiScale();
+  const def = defaultUiScale();
   const set = (n: number) => {
     const s = Math.round(n * 20) / 20;
     store.setSettings({ uiScale: s });
@@ -648,8 +649,8 @@ export function ScaleSetting() {
         </label>
         <span className="flex items-center gap-2">
           <span className="w-12 text-right text-[13px] tabular-nums text-gold-300">{Math.round(v * 100)}%</span>
-          {v !== 1 && (
-            <button className="text-[11.5px] text-ink-400 hover:text-ink-200" onClick={() => set(1)}>
+          {v !== def && (
+            <button className="text-[11.5px] text-ink-400 hover:text-ink-200" onClick={() => set(def)}>
               Reset
             </button>
           )}

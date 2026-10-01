@@ -72,6 +72,8 @@ export interface LoadedDoc {
   dirty: boolean;
   /** Set once this session has backed up the original file. */
   backedUp: boolean;
+  /** How many times it has been saved this session (so undo knows whether "unchanged" still means "saved"). */
+  saves?: number;
 }
 
 export type Loc =
@@ -134,7 +136,7 @@ export interface Settings {
 interface Snapshot {
   label: string;
   /** Per document: puts its items and gold back, plus the dirty flag it had. */
-  lists: Map<string, { restore: () => void; dirty: boolean }>;
+  lists: Map<string, { restore: () => void; dirty: boolean; saves: number }>;
 }
 
 /** Settings as last saved (empty if none or storage is unavailable). */
@@ -539,7 +541,7 @@ export class Store {
         const [entries, gold] = [[...d.entries], { ...d.gold }];
         restore = () => Object.assign(d, { entries, gold });
       }
-      lists.set(id, { restore, dirty: e.dirty });
+      lists.set(id, { restore, dirty: e.dirty, saves: e.saves ?? 0 });
     }
     this.history = [...this.history.slice(-49), { label, lists }];
   }
@@ -551,7 +553,8 @@ export class Store {
       const e = this.entryOf(id);
       if (!e?.doc) continue;
       s.restore();
-      e.dirty = s.dirty || e.dirty;
+      // back to how it was: unsaved only if it was then, or if it has been saved since (the file on disk moved on)
+      e.dirty = s.dirty || (e.saves ?? 0) !== s.saves;
     }
     this.toast('info', `Undid: ${snap.label}`);
     this.emit();
@@ -1509,6 +1512,7 @@ export class Store {
           }
         }
         o.doc.dirty = false;
+        o.doc.saves = (o.doc.saves ?? 0) + 1;
       }
       const shortBackup = this.lastBackup?.split(/[\\/]/).slice(-2).join('/');
       this.toast('success', `Saved ${outputs.length} file${outputs.length > 1 ? 's' : ''}${shortBackup && toBackup.length ? ` · originals backed up to …/${shortBackup}` : ''}.`);
