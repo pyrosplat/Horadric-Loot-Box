@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2
+
+- Stackables are one tab again: runes, gems and materials on a single page.
+
 ## 2.4.1
 
 - Fixed: mercenaries only take the gear their kind can use. The Act 5 Frenzy Barbarian holds two one-handed swords.

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { arrangeStackables, BOARD_SIZE, boardOf, GD, gridDims, STACK_BOARDS, STACKABLE_SLOTS, StashTabType, tabIsEditable, type D2Item, type D2SharedStash, type StackBoard } from '../core';
+import { arrangeStackables, GD, gridDims, STACKABLE_SLOTS, STACKABLES_COLS, STACKABLES_LABEL, STACKABLES_ROWS, StashTabType, tabIsEditable, type D2Item, type D2SharedStash } from '../core';
 import { ItemTile } from './ItemTile';
 import { desc, itemKey } from '../state/store';
 import { Badge } from './CharacterView';
@@ -10,13 +10,12 @@ import { Grid } from './Grid';
 import { QUALITY_TEXT, useTooltip } from './Tooltip';
 
 /**
- * A shared stash laid out like the game: one Shared tab with a page switcher, and, for a Reign of the Warlock stash,
- * the Gems, Materials and Runes tabs (the one stackables tab in the file, split the way the game shows it). The
- * Chronicle tab in the file is kept as it is but not shown.
+ * A shared stash: one Shared tab with a page switcher (or a tab per page, by a setting), and, for a Reign of the
+ * Warlock stash, one Stackables tab with every rune, gem and material on a single board. The Chronicle tab in the
+ * file is kept as it is but not shown.
  */
 export function StashView({ docId, stash, pane, tab, matches }: { docId: string; stash: D2SharedStash; pane: 0 | 1; tab: number; matches?: (i: D2Item) => boolean }) {
   const store = useStore();
-  const [board, setBoard] = useState<StackBoard>('runes');
   const pages = stash.tabs.map((t, i) => (t.type === StashTabType.Normal ? i : -1)).filter((i) => i >= 0);
   const stackTab = stash.tabs.findIndex((t) => t.type === StashTabType.Advanced);
   // the pane's tab is the file's tab index: a shared page, or the stackables tab (any other tab shows page 1)
@@ -27,7 +26,7 @@ export function StashView({ docId, stash, pane, tab, matches }: { docId: string;
   const vaultId = [...store.docs.values()].find((d) => d.doc?.kind === 'vault')?.id;
   const sharedCount = pages.reduce((n, i) => n + stash.tabs[i].items.length, 0);
   const stacks = stackTab >= 0 ? arrangeStackables(stash.tabs[stackTab].items) : undefined;
-  const boardCount = (b: StackBoard) => (stacks ? [...stacks.bySlot].filter(([code, e]) => e.count > 0 && boardOf(code) === b).length + (b === 'materials' ? stacks.extra.length : 0) : 0);
+  const stackTotal = stacks ? [...stacks.bySlot.values()].filter((e) => e.count > 0).length + stacks.extra.length : 0;
   const paged = store.settings.sharedStash !== 'tabs';
   const tabs: { key: string; label: string; count: number; active: boolean; open: () => void }[] = [
     ...(!pages.length
@@ -35,9 +34,7 @@ export function StashView({ docId, stash, pane, tab, matches }: { docId: string;
       : paged
         ? [{ key: 'shared', label: 'Shared', count: sharedCount, active: !onBoard, open: () => store.setTab(pane, onBoard ? pages[0] : idx) }]
         : pages.map((p, n) => ({ key: `shared${n}`, label: `Shared ${n + 1}`, count: stash.tabs[p].items.length, active: !onBoard && idx === p, open: () => store.setTab(pane, p) }))),
-    ...(stackTab >= 0
-      ? STACK_BOARDS.map((b) => ({ key: b.id, label: b.label, count: boardCount(b.id), active: onBoard && board === b.id, open: () => (setBoard(b.id), store.setTab(pane, stackTab)) }))
-      : []),
+    ...(stackTab >= 0 ? [{ key: 'stackables', label: STACKABLES_LABEL, count: stackTotal, active: onBoard, open: () => store.setTab(pane, stackTab) }] : []),
   ];
   const goPage = (n: number) => store.setTab(pane, pages[(n + pages.length) % pages.length]);
   const width = gridDims(stash, 'shared', idx).w * (store.showArt ? 38 : 34) + 2;
@@ -102,7 +99,7 @@ export function StashView({ docId, stash, pane, tab, matches }: { docId: string;
           </div>
         </>
       ) : onBoard ? (
-        <StackBoardView docId={docId} pane={pane} tab={idx} items={t.items} board={board} />
+        <StackBoardView docId={docId} pane={pane} tab={idx} items={t.items} />
       ) : null}
     </div>
   );
@@ -110,16 +107,15 @@ export function StashView({ docId, stash, pane, tab, matches }: { docId: string;
 
 const FILLED_BORDER: Record<string, string> = { rune: '#e38a1f' };
 
-function StackBoardView({ docId, pane, tab, items, board }: { docId: string; pane: 0 | 1; tab: number; items: D2Item[]; board: StackBoard }) {
+function StackBoardView({ docId, pane, tab, items }: { docId: string; pane: 0 | 1; tab: number; items: D2Item[] }) {
   const store = useStore();
   const tip = useTooltip();
   const cell = 38;
   const view = store.showArt ? store.settings.itemView : 'tiles';
-  const { bySlot, extra: unknown } = arrangeStackables(items);
-  // stackables a newer patch added (no slot yet) are listed under the Materials board
-  const extra = board === 'materials' ? unknown : [];
-  const size = BOARD_SIZE[board];
-  const label = STACK_BOARDS.find((b) => b.id === board)!.label;
+  // stackables a newer patch added (no slot yet) are listed under the board
+  const { bySlot, extra } = arrangeStackables(items);
+  const size = { cols: STACKABLES_COLS, rows: STACKABLES_ROWS };
+  const label = STACKABLES_LABEL;
   const { handlers, hover } = useDrop(() => ({ docId, area: 'stackables', tab }));
   const canDrag = !store.settings.readOnly;
   const hoverCode = hover && drag.item ? drag.item.code : undefined;
@@ -131,7 +127,7 @@ function StackBoardView({ docId, pane, tab, items, board }: { docId: string; pan
         style={{ width: size.cols * cell + 8, height: size.rows * cell + 8 }}
         title={hover && !hover.ok ? hover.reason : undefined}
       >
-        {STACKABLE_SLOTS.filter((slot) => slot.board === board).map((slot) => {
+        {STACKABLE_SLOTS.map((slot) => {
           const found = bySlot.get(slot.code);
           // an empty stack (count 0) is shown like an empty slot
           const got = found && found.count > 0 ? found : undefined;

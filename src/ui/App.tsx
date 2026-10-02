@@ -181,7 +181,7 @@ function Shell({ onSwitch }: { onSwitch: () => void }) {
           {store.settings.tradeEnabled && (
             <button
               onClick={() => store.openTrade()}
-              title="Open the Trade panel, with your Reign of the Warlock shared stash's Runes tab to pay from"
+              title="Open the Trade panel, with your Reign of the Warlock shared stash's Stackables tab to pay from"
               className={`mr-1 rounded border px-3 py-1 text-[13px] font-semibold ${
                 store.panes.some((p) => p.docId === TRADE_ID) ? 'border-gold-400 bg-gold-600/25 text-gold-200' : 'border-gold-600/70 bg-gold-600/10 text-gold-300 hover:border-gold-400 hover:bg-gold-600/20'
               }`}

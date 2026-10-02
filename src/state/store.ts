@@ -21,8 +21,7 @@ import {
   equipPlacement,
   firstFreeBeltSlot,
   inStackablesTab,
-  boardOf,
-  STACK_BOARDS,
+  STACKABLES_LABEL,
   takeFromStack,
   isBoardStackable,
   stackCount,
@@ -863,7 +862,7 @@ export class Store {
         d.tabs.forEach((t, i) => {
           const page = d.tabs.slice(0, i + 1).filter((x) => x.type === StashTabType.Normal).length;
           for (const it of t.items) {
-            const tab = t.type === StashTabType.Advanced ? STACK_BOARDS.find((b) => b.id === boardOf(it.code))!.label : `Shared page ${page}`;
+            const tab = t.type === StashTabType.Advanced ? STACKABLES_LABEL : `Shared page ${page}`;
             add(it, e.id, `${name} · ${tab}`, false);
           }
         });
