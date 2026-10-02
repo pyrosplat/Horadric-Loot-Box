@@ -74,12 +74,6 @@ npm run desktop:dev    # desktop app (Tauri)
 npm run desktop:build  # installers
 ```
 
-Desktop builds need a C/C++ compiler: the Visual Studio Build Tools on Windows, or g++/clang elsewhere. Linux builds also need `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf`. Pushing a `v*` tag builds signed Windows and Linux installers as a draft GitHub release; see [RELEASING.md](RELEASING.md). The app updates itself from published releases.
-
-For a new game patch, replace the tables in `vendor/d2r-3.3/`, then run `npm run gamedata && npm test`.
-
-**Web page:** `npm run dev:web` runs it locally; `npm run build:web` builds it into `dist-web`. Pushing a `v*` tag publishes it to GitHub Pages (one-time: **Settings → Pages → Source: GitHub Actions**).
-
 ## Credits
 
 - [CascLib](https://github.com/ladislav-zezula/CascLib) (MIT).
