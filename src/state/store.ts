@@ -7,6 +7,9 @@ import {
   inventoryGoldCap,
   setCharacterGold,
   setTabGold,
+  setStashGold,
+  stashGold,
+  stashGoldCap,
   StashTabType,
   addToStack,
   beltPlacement,
@@ -60,6 +63,7 @@ import {
 import type { Platform, SaveFileEntry, UpdateInfo } from '../platform';
 import { ArtIndex } from '../art';
 import type { Held } from '../core';
+import { loadTradeLog, storeTradeLog, tradeLines, type TradeLogEntry } from './tradeLog';
 
 export type AnyDoc = D2Character | D2SharedStash | Vault;
 
@@ -137,6 +141,8 @@ interface Snapshot {
   label: string;
   /** Per document: puts its items and gold back, plus the dirty flag it had. */
   lists: Map<string, { restore: () => void; dirty: boolean; saves: number }>;
+  /** Anything else to take back with this step (a trade leaves the trade history). */
+  also?: () => void;
 }
 
 /** Settings as last saved (empty if none or storage is unavailable). */
@@ -392,6 +398,8 @@ export class Store {
       if (this.platform.id === 'tauri' && this.settings.lastFolder !== folder) this.setSettings({ lastFolder: folder });
       this.docs.clear();
       this.history = [];
+      // trades that were never saved didn't happen; ones undone after a save are still in the files
+      this.tradeLog = loadTradeLog();
       for (const f of this.files) await this.loadFile(f);
       this.files = this.files.filter((f) => this.docs.has(f.path));
       if (this.options.vaults !== false) {
@@ -524,7 +532,7 @@ export class Store {
 
   // ------------------------------------------------------------------ history
 
-  private snapshot(label: string, docIds: string[]) {
+  private snapshot(label: string, docIds: string[], also?: () => void) {
     const lists: Snapshot['lists'] = new Map();
     for (const id of docIds) {
       const e = this.entryOf(id);
@@ -543,7 +551,7 @@ export class Store {
       }
       lists.set(id, { restore, dirty: e.dirty, saves: e.saves ?? 0 });
     }
-    this.history = [...this.history.slice(-49), { label, lists }];
+    this.history = [...this.history.slice(-49), { label, lists, also }];
   }
 
   undo() {
@@ -556,6 +564,7 @@ export class Store {
       // back to how it was: unsaved only if it was then, or if it has been saved since (the file on disk moved on)
       e.dirty = s.dirty || (e.saves ?? 0) !== s.saves;
     }
+    snap.also?.();
     this.toast('info', `Undid: ${snap.label}`);
     this.emit();
   }
@@ -1124,8 +1133,11 @@ export class Store {
     const hardcore = [...hcs][0] ?? false;
     if (this.trade.mode && (this.trade.mode === 'hardcore') !== hardcore)
       return fail(`The listing you imported is ${this.trade.mode}, but you're paying from a ${hardcore ? 'hardcore' : 'softcore'} file. Softcore and hardcore never mix.`);
-    this.snapshot('trade', [TRADE_OFFER_ID, TRADE_ID]);
+    const logId = newUid();
+    this.snapshot('trade', [TRADE_OFFER_ID, TRADE_ID], () => (this.tradeLog = this.tradeLog.filter((x) => x.id !== logId)));
     const inbox = this.tradeInbox.doc as Vault;
+    const before = inbox.entries.length;
+    const gave = paid.map((p) => p.item);
     try {
       (this.tradeOfferBox.doc as Vault).entries = [];
       // what you get waits in the Received box until you drag it where you want it
@@ -1149,12 +1161,42 @@ export class Store {
     const sold = selling ? receive![pick] ?? [] : [];
     const got = [...[...want].map(([c, n]) => `${n}× ${GD.items[c]?.name ?? c}`), ...items.map((w) => w.name), ...sold.map((a) => `${a.qty}× ${a.name}`)].join(', ');
     const count = [...want.values()].reduce((a, b) => a + b, 0) + items.length + sold.reduce((t, a) => t + a.qty, 0);
+    const e = this.docs.get(docId!);
+    this.tradeLog = [
+      { id: logId, at: new Date().toISOString(), side: selling ? 'sell' : 'buy', got: tradeLines(inbox.entries.slice(before).map((x) => x.item)), paid: tradeLines(gave), mode: hardcore ? 'hardcore' : 'softcore', file: docLabel(e?.doc, e?.name ?? ''), saved: false },
+      ...this.tradeLog,
+    ];
     this.trade = { want: new Map(), offer: new Map(), items: [], mode: undefined, ask: undefined, listing: undefined, side: this.trade.side, receive: undefined, pick: 0 };
     this.toast('success', `Traded for ${got}. Drag ${count === 1 ? 'it' : 'them'} from Received into ${this.tradeDestination}. Undo with Ctrl+Z.`);
     this.emit();
     return true;
   }
 
+  /**
+   * Trades made in the Trade panel, newest first. A trade is kept (in this app or browser's storage) once the files
+   * are saved, because that is when it lands in the game. Until then it is only in memory: undoing it takes it
+   * out, and reloading the files goes back to the stored history.
+   */
+  tradeLog: TradeLogEntry[] = loadTradeLog();
+
+  /** Removes one trade from the history. */
+  tradeLogRemove(id: string) {
+    this.tradeLog = this.tradeLog.filter((e) => e.id !== id);
+    storeTradeLog(this.tradeLog);
+    this.emit();
+  }
+
+  tradeLogClear() {
+    this.tradeLog = [];
+    storeTradeLog(this.tradeLog);
+    this.emit();
+  }
+
+  /** The files were saved: the trades made since are real now. */
+  private tradeLogKeep() {
+    this.tradeLog = this.tradeLog.map((e) => (e.saved ? e : { ...e, saved: true }));
+    storeTradeLog(this.tradeLog);
+  }
 
   // ------------------------------------------------------------------ deleting items
 
@@ -1350,11 +1392,25 @@ export class Store {
     return realm && hc !== undefined ? goldPot(realm, hc) : undefined;
   }
 
+  /** Whether a shared stash's gold is one pool over its pages (Reign of the Warlock). */
+  goldPooled(docId: string): boolean {
+    const d = this.docs.get(docId)?.doc;
+    return d?.kind === 'stash' && d.modern;
+  }
+
+  /** The gold ref for a shared stash page: the whole pool for a RotW stash (so every page shows the same). */
+  sharedGoldRef(docId: string, tab?: number): GoldRef | undefined {
+    const d = this.docs.get(docId)?.doc;
+    if (d?.kind !== 'stash') return undefined;
+    const first = d.tabs.findIndex((t) => t.type === StashTabType.Normal);
+    return { docId, kind: 'shared', tab: d.modern || tab === undefined ? first : tab };
+  }
+
   goldOf(ref: GoldRef): number {
     const d = this.docs.get(ref.docId)?.doc;
     if (!d) return 0;
     if (ref.kind === 'vault') return d.kind === 'vault' ? d.gold[ref.pot] ?? 0 : 0;
-    if (ref.kind === 'shared') return d.kind === 'stash' ? d.tabs[ref.tab]?.gold ?? 0 : 0;
+    if (ref.kind === 'shared') return d.kind !== 'stash' ? 0 : d.modern ? stashGold(d) : d.tabs[ref.tab]?.gold ?? 0;
     if (d.kind !== 'character') return 0;
     return (ref.kind === 'inventory' ? d.stats.gold : d.stats.goldbank) ?? 0;
   }
@@ -1363,6 +1419,7 @@ export class Store {
     const d = this.docs.get(ref.docId)?.doc;
     if (ref.kind === 'vault') return Number.MAX_SAFE_INTEGER;
     if (ref.kind === 'inventory' && d?.kind === 'character') return inventoryGoldCap(d);
+    if (ref.kind === 'shared' && d?.kind === 'stash' && d.modern) return stashGoldCap(d);
     return STASH_GOLD_CAP;
   }
 
@@ -1370,7 +1427,7 @@ export class Store {
     const e = this.docs.get(ref.docId);
     const name = docLabel(e?.doc, e?.name ?? '');
     if (ref.kind === 'vault') return `${name} (${POT_LABEL[ref.pot] ?? ref.pot})`;
-    if (ref.kind === 'shared') return `${name} · Shared ${ref.tab + 1}`;
+    if (ref.kind === 'shared') return this.goldPooled(ref.docId) ? `${name} · Shared` : `${name} · Shared ${ref.tab + 1}`;
     return `${name} · ${ref.kind === 'inventory' ? 'Inventory' : 'Stash'}`;
   }
 
@@ -1389,6 +1446,7 @@ export class Store {
       if (d.kind === 'vault') out.push({ docId: e.id, kind: 'vault', pot });
       else if (this.goldPotOf(e.id) !== pot) continue;
       else if (d.kind === 'character') out.push({ docId: e.id, kind: 'stash' }, { docId: e.id, kind: 'inventory' });
+      else if (d.modern) out.push(this.sharedGoldRef(e.id)!);
       else d.tabs.forEach((t, tab) => t.type === StashTabType.Normal && out.push({ docId: e.id, kind: 'shared', tab }));
     }
     const same = (a: GoldRef, b: GoldRef) => JSON.stringify(a) === JSON.stringify(b);
@@ -1398,7 +1456,7 @@ export class Store {
   private setGold(ref: GoldRef, value: number) {
     const d = this.docs.get(ref.docId)!.doc!;
     if (ref.kind === 'vault') (d as Vault).gold = { ...(d as Vault).gold, [ref.pot]: value };
-    else if (ref.kind === 'shared') setTabGold(d as D2SharedStash, ref.tab, value);
+    else if (ref.kind === 'shared') (this.goldPooled(ref.docId) ? setStashGold(d as D2SharedStash, value) : setTabGold(d as D2SharedStash, ref.tab, value));
     else setCharacterGold(d as D2Character, ref.kind === 'inventory' ? 'gold' : 'goldbank', value);
   }
 
@@ -1514,6 +1572,7 @@ export class Store {
         o.doc.dirty = false;
         o.doc.saves = (o.doc.saves ?? 0) + 1;
       }
+      this.tradeLogKeep();
       const shortBackup = this.lastBackup?.split(/[\\/]/).slice(-2).join('/');
       this.toast('success', `Saved ${outputs.length} file${outputs.length > 1 ? 's' : ''}${shortBackup && toBackup.length ? ` · originals backed up to …/${shortBackup}` : ''}.`);
     } catch (e) {

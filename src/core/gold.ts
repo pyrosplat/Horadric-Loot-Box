@@ -1,6 +1,6 @@
 import { BitWriter, concatBytes, setU32 } from './bits';
 import type { D2Character } from './d2s';
-import type { D2SharedStash } from './d2i';
+import { StashTabType, type D2SharedStash } from './d2i';
 import { statDef } from './gamedata';
 
 /** The personal stash and every shared stash tab hold up to 2,500,000 gold. */
@@ -54,4 +54,30 @@ export function setTabGold(stash: D2SharedStash, tab: number, value: number) {
   setU32(header, 12, value);
   t.header = header;
   t.gold = value;
+}
+
+/**
+ * Reign of the Warlock keeps a shared stash's gold as one pool across its shared pages: each page holds up to
+ * 2,500,000 and the game fills them in order (page 1 first). These read and write that pool.
+ */
+const sharedPages = (stash: D2SharedStash) => stash.tabs.filter((t) => t.type === StashTabType.Normal);
+
+/** Total gold over the shared pages. */
+export const stashGold = (stash: D2SharedStash) => sharedPages(stash).reduce((n, t) => n + t.gold, 0);
+
+/** Most gold the shared pages can hold together. */
+export const stashGoldCap = (stash: D2SharedStash) => sharedPages(stash).length * STASH_GOLD_CAP;
+
+/** Sets the pool's total, filling pages in order the way the game does. */
+export function setStashGold(stash: D2SharedStash, value: number) {
+  if (!Number.isInteger(value) || value < 0) throw new Error('Gold must be a whole number of 0 or more.');
+  const cap = stashGoldCap(stash);
+  if (value > cap) throw new Error(`This shared stash holds at most ${cap.toLocaleString()} gold.`);
+  let left = value;
+  stash.tabs.forEach((t, i) => {
+    if (t.type !== StashTabType.Normal) return;
+    const n = Math.min(left, STASH_GOLD_CAP);
+    if (t.gold !== n) setTabGold(stash, i, n);
+    left -= n;
+  });
 }

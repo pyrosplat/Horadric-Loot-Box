@@ -181,6 +181,21 @@ for (const r of readTsv('uniqueitems')) {
     props: propList(r, (i) => `prop${i}`, (i) => `par${i}`, (i) => `min${i}`, (i) => `max${i}`, 12),
   };
 }
+// ---------- property groups ----------
+// Reign of the Warlock: a property that rolls one of several (a Renewed charm's "Gelid-Affix2": magic find or gold
+// find). PickMode 2 picks one option, weighted by its Chance.
+const propGroups = {};
+for (const r of readTsv('propertygroups')) {
+  if (!r.code || r.code.startsWith('*')) continue;
+  const options = [];
+  for (let i = 1; i <= 8; i++) {
+    const c = r[`Prop${i}`];
+    if (!c) continue;
+    options.push({ prop: [c, r[`ParMin${i}`] ?? '', int(r[`ModMin${i}`]), int(r[`ModMax${i}`])], chance: int(r[`Chance${i}`]) || 1 });
+  }
+  if (options.length) propGroups[r.code] = { pick: int(r.PickMode), options };
+}
+
 const setItems = {};
 let setId = 0;
 for (const r of readTsv('setitems')) {
@@ -381,6 +396,7 @@ const data = {
   items,
   itemOrder,
   uniques,
+  propGroups,
   setItems,
   sets,
   runewords,

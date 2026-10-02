@@ -919,13 +919,13 @@ describe('uber items and RotW Sunder charms', () => {
     store.undo();
   });
 
-  test('old Sunder charms are out; the Latent ones are in, Renewed ones not yet', async () => {
+  test('old Sunder charms are out; the Latent and Renewed ones are in', async () => {
     const { buildableTemplates, unbuildableReason } = await import('../src/core');
     const names = buildableTemplates('unique').map((t) => t.name);
     for (const s of ['Cold Rupture', 'Flame Rift', 'Crack of the Heavens', 'Rotting Fissure', 'Bone Break', 'Black Cleft']) {
       expect(names).not.toContain(s);
       expect(names).toContain(`Latent ${s}`);
-      expect(names).not.toContain(`Renewed ${s}`);
+      expect(names).toContain(`Renewed ${s}`);
     }
     const old = Object.keys(GD.uniques).find((k) => GD.uniques[k].name === 'Cold Rupture')!;
     expect(unbuildableReason('unique', Number(old))).toBe('Replaced by Latent Cold Rupture');

@@ -5,15 +5,16 @@ import type { Platform, SaveFileEntry } from './types';
  * Saves dropped onto the web page (or picked with the file dialog). Nothing leaves the browser.
  *
  * Saving: in Chrome and Edge a dropped or picked file comes with a handle the page can write back to, after the
- * browser asks once. Other browsers can't, so the edited file is downloaded under its own name, for the player to
+ * browser asks once (for a whole save folder, once for the folder). Other browsers can't, so the edited file is downloaded under its own name, for the player to
  * put back in their save folder. Before the first save of each file, a copy of the original is downloaded too.
  */
 
-type Handle = FileSystemFileHandle & {
+interface Asks {
   queryPermission?(o: { mode: 'readwrite' }): Promise<PermissionState>;
   requestPermission?(o: { mode: 'readwrite' }): Promise<PermissionState>;
-  createWritable?(): Promise<{ write(d: ArrayBuffer): Promise<void>; close(): Promise<void> }>;
-};
+}
+type Handle = FileSystemFileHandle & Asks & { createWritable?(): Promise<{ write(d: ArrayBuffer): Promise<void>; close(): Promise<void> }> };
+type Folder = FileSystemDirectoryHandle & Asks;
 
 interface Dropped {
   name: string;
@@ -21,6 +22,8 @@ interface Dropped {
   original: Uint8Array;
   modified?: number;
   handle?: Handle;
+  /** The folder it was loaded from (a whole save folder): write access is asked for the folder, once. */
+  parent?: Folder;
   /** Writing back in place was refused; downloads are used for this file. */
   denied?: boolean;
 }
@@ -47,7 +50,7 @@ const backupName = (name: string) => {
 
 export interface DroppedPlatform extends Platform {
   /** Adds files; one with the same name replaces the earlier copy. Returns their paths. */
-  add(files: { name: string; data: Uint8Array; modified?: number; handle?: FileSystemFileHandle }[]): string[];
+  add(files: { name: string; data: Uint8Array; modified?: number; handle?: FileSystemFileHandle; parent?: FileSystemDirectoryHandle }[]): string[];
   /** True when every one of these files can be written back in place (no download needed). */
   writesInPlace(paths: string[]): boolean;
   /** Asks the browser for write access to these files. Call it straight from a click or key press. */
@@ -73,7 +76,7 @@ export function createDroppedPlatform(): DroppedPlatform {
     add(list) {
       return list.map((f) => {
         const path = pathOf(f.name);
-        files.set(path, { name: f.name, data: f.data.slice(), original: f.data.slice(), modified: f.modified, handle: f.handle as Handle | undefined });
+        files.set(path, { name: f.name, data: f.data.slice(), original: f.data.slice(), modified: f.modified, handle: f.handle as Handle | undefined, parent: f.parent as Folder | undefined });
         return path;
       });
     },
@@ -86,11 +89,18 @@ export function createDroppedPlatform(): DroppedPlatform {
     },
 
     async askToWrite(paths) {
+      // a folder is asked for once; its answer covers the files in it
+      const asked = new Set<Folder>();
       for (const p of paths) {
         const f = files.get(p);
         if (!f?.handle?.createWritable || f.denied) continue;
         try {
           let state = (await f.handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt';
+          if (state !== 'granted' && f.parent && !asked.has(f.parent)) {
+            asked.add(f.parent);
+            await f.parent.requestPermission?.({ mode: 'readwrite' }).catch(() => undefined);
+            state = (await f.handle.queryPermission?.({ mode: 'readwrite' })) ?? 'prompt';
+          }
           if (state !== 'granted') state = (await f.handle.requestPermission?.({ mode: 'readwrite' })) ?? 'denied';
           if (state !== 'granted') f.denied = true;
         } catch {

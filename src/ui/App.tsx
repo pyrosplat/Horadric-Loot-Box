@@ -360,15 +360,18 @@ export function ArtSettings() {
     <Section title="Items">
       <div className="grid grid-cols-3 gap-1 rounded-md bg-ink-950 p-1" role="radiogroup" aria-label="Item display">
         {VIEWS.map((v) => {
-          const on = store.settings.itemView === v.id;
+          // without art loaded, items are tiles whatever the saved choice is
+          const needsArt = v.id !== 'tiles' && !store.art;
+          const on = store.art ? store.settings.itemView === v.id : v.id === 'tiles';
           return (
             <button
               key={v.id}
               role="radio"
               aria-checked={on}
-              title={v.hint}
+              disabled={needsArt}
+              title={needsArt ? 'Choose your game files below to use this' : v.hint}
               onClick={() => store.setSettings({ itemView: v.id })}
-              className={`rounded px-2 py-1.5 text-[12.5px] transition ${on ? 'bg-gold-500 font-semibold text-ink-950' : 'text-ink-300 hover:bg-ink-800'}`}
+              className={`rounded px-2 py-1.5 text-[12.5px] transition ${on ? 'bg-gold-500 font-semibold text-ink-950' : 'text-ink-300 hover:bg-ink-800'} disabled:cursor-not-allowed disabled:text-ink-600 disabled:hover:bg-transparent`}
             >
               {v.label}
             </button>
@@ -521,6 +524,27 @@ function UpdateSettings() {
   );
 }
 
+/** The update's changelog section: bullets, headings and **bold**, as the changelog writes them. */
+function ReleaseNotes({ text }: { text: string }) {
+  const bold = (t: string) => t.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i} className="font-semibold text-ink-100">{part}</strong> : part.replace(/`/g, '')));
+  const lines = text.split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean);
+  return (
+    <div className="space-y-1">
+      {lines.map((l, i) => {
+        const bullet = /^\s*[-*•]\s+(.*)$/.exec(l);
+        if (bullet) return (
+          <div key={i} className="flex gap-2">
+            <span className="text-gold-400">•</span>
+            <span>{bold(bullet[1])}</span>
+          </div>
+        );
+        const heading = /^#+\s+(.*)$/.exec(l);
+        return <p key={i} className={heading ? 'pt-1 font-semibold text-ink-100' : ''}>{bold(heading ? heading[1] : l)}</p>;
+      })}
+    </div>
+  );
+}
+
 function UpdateDialog({ onClose }: { onClose: () => void }) {
   const store = useStore();
   const u = store.update;
@@ -530,7 +554,12 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
       <div role="dialog" aria-label="Update available" className="w-full max-w-md rounded-lg border border-ink-600 bg-ink-900 p-6 shadow-tip" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-lg text-gold-300">Update to {u.info?.version}</h2>
         <p className="mt-1 text-[12.5px] text-ink-400">You have {__APP_VERSION__}. The app restarts after updating; your saves and vaults aren't touched.</p>
-        {u.info?.notes && <div className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded border border-ink-700 bg-ink-950 p-3 text-[12.5px] leading-relaxed text-ink-300">{u.info.notes}</div>}
+        {u.info?.notes && (
+          <div className="mt-3 max-h-56 overflow-auto rounded border border-ink-700 bg-ink-950 p-3 text-[12.5px] leading-relaxed text-ink-300">
+            <p className="mb-1.5 font-display text-[10.5px] uppercase tracking-[.22em] text-[#8a8a8a]">What&rsquo;s new</p>
+            <ReleaseNotes text={u.info.notes} />
+          </div>
+        )}
         {installing && (
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-800">
             <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((u.progress ?? 0.05) * 100)}%` }} />

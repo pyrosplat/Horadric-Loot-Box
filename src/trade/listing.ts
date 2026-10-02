@@ -12,6 +12,8 @@ import {
   propDefs,
   propLines,
   rollSlots,
+  chosenSlots,
+  pickRolls,
   runewordBases,
   superiorRows,
   templateDefenseRange,
@@ -283,26 +285,69 @@ function matchName(lines: string[]): [Candidate, number, number][] {
  * Finds the line showing a roll and reads the rolled number from it: the property's text at its lowest and
  * highest roll gives the wording and which number varies ("+10 to all Attributes" / "+20 to all Attributes").
  */
-function readRoll(lines: string[], used: Set<number>, lo: string, hi: string): { value: number; line: number } | undefined {
+function readRoll(lines: string[], used: Set<number>, lo: string, hi: string): { value: number; at: number[]; score: number } | undefined {
   const loN = numbers(lo), hiN = numbers(hi);
   const idx = loN.findIndex((n, i) => n !== hiN[i]);
   if (idx < 0) return undefined;
-  let best: { value: number; line: number; score: number } | undefined;
-  lines.forEach((l, i) => {
-    // the item's own base lines ("Defense: 396", Traderie's "176Defense", durability, requirements) aren't rolls
-    if (used.has(i) || BASE_LINE.test(norm(l))) return;
-    const s = wordingSimilarity(l, lo);
-    const got = numbers(l);
-    if (s < 0.8 || got.length !== loN.length) return;
-    if (!best || s > best.score) best = { value: got[idx], line: i, score: s };
-  });
-  return best && { value: best.value, line: best.line };
+  let best: { value: number; at: number[]; score: number } | undefined;
+  for (const sp of spans(lines, used)) {
+    const text = asGameWords(sp.text, lo);
+    const s = wordingSimilarity(text, lo);
+    const got = numbers(text);
+    if (s < 0.8 || got.length !== loN.length) continue;
+    let value = got[idx];
+    // "+347To Life" is "+34 To Life": the T read twice, once as a 7. Only when the number is out of range as read.
+    const [a, b] = [Math.min(loN[idx], hiN[idx]), Math.max(loN[idx], hiN[idx])];
+    const cut = Math.floor(value / 10);
+    if ((value < a || value > b) && cut >= a && cut <= b && new RegExp(`${value}t[o0]`, 'i').test(sp.text) && value % 10 === 7) value = cut;
+    if (!best || s > best.score) best = { value, at: sp.at, score: s };
+  }
+  return best;
+}
+
+/**
+ * The lines a stat could be on: each one, then each one joined with the next where a long stat wrapped
+ * ("Physical Damage Received" / "Reduced By 10%"). A wrapped half has no number of its own, or is all that follows
+ * one that does, so only pairs with a number-less line are tried. Single lines come first and win ties.
+ */
+function spans(lines: string[], used?: Set<number>): { text: string; at: number[] }[] {
+  // the item's own base lines ("Defense: 396", Traderie's "176Defense", durability, requirements) aren't rolls
+  const ok = (i: number) => !used?.has(i) && !BASE_LINE.test(norm(lines[i]));
+  const out: { text: string; at: number[] }[] = [];
+  lines.forEach((l, i) => ok(i) && out.push({ text: l, at: [i] }));
+  for (let i = 0; i + 1 < lines.length; i++)
+    if (ok(i) && ok(i + 1) && (!/\d/.test(lines[i]) || !/\d/.test(lines[i + 1]))) out.push({ text: `${lines[i]} ${lines[i + 1]}`, at: [i, i + 1] });
+  return out;
+}
+
+/**
+ * A listing line in the game's words, for a stat the game shows as a minus (a Latent charm's "Cold Resist -84%"):
+ * Traderie writes those as "Cold Resist +84%" and "Physical Damage Received Reduced By 10%".
+ */
+function asGameWords(line: string, game: string): string {
+  if (!/-\d/.test(game)) return line;
+  let l = line.replace(/\+(?=\d)/g, '-');
+  if (/increased by -\d/i.test(game)) l = l.replace(/reduced\s*by\s*[+-]?(?=\d)/i, 'Increased by -');
+  return l;
+}
+
+/** How well a fixed line matches the listing (0 when it isn't there): for telling group options apart. */
+function lineScore(lines: string[], used: Set<number>, text: string): { at: number[]; score: number } | undefined {
+  const want = numbers(text).sort((a, b) => a - b).join();
+  let best: { at: number[]; score: number } | undefined;
+  for (const sp of spans(lines, used)) {
+    const s = norm(sp.text) === norm(text) ? 1 : wordingSimilarity(sp.text, text);
+    if (s > 0.85 && numbers(sp.text).sort((a, b) => a - b).join() === want && (!best || s > best.score)) best = { at: sp.at, score: s };
+  }
+  return best;
 }
 
 /** Whether a fixed (non-rolling) property's text is on the listing: used to tell look-alike items apart. */
 function hasLine(lines: string[], text: string): boolean {
   const n = norm(text), want = numbers(text).sort((a, b) => a - b).join();
-  return lines.some((l) => norm(l) === n || (wordingSimilarity(l, text) > 0.85 && numbers(l).sort((a, b) => a - b).join() === want));
+  // Traderie puts a stat's own number in front of wording that has none ("300Monster Cold Immunity Is Sundered")
+  const nums = (l: string) => numbers(want ? l : l.replace(/^\s*\d+(?=[A-Za-z])/, '')).sort((a, b) => a - b).join();
+  return spans(lines).some(({ text: l }) => norm(l) === n || (wordingSimilarity(want ? l : l.replace(/^\s*\d+(?=[A-Za-z])/, ''), text) > 0.85 && nums(l) === want));
 }
 
 function readTemplate(kind: TemplateKind, id: number, lines: string[], warnings: string[], errors: string[]): { rolls: Rolls; fit: number; shown: string[] } {
@@ -355,6 +400,54 @@ function readRolls(
       }
       continue;
     }
+    if (s.kind === 'group') {
+      // a Renewed charm's affix: whichever option's line is on the listing (closest wording wins), then its roll
+      total++;
+      let best: { i: number; at: number[]; score: number; value?: number } | undefined;
+      s.choices!.forEach((c, i) => {
+        const t = propLines([c.prop])[0];
+        if (!t) return;
+        const hit = c.variable ? readRoll(lines, used, t.lo, t.hi) : lineScore(lines, used, t.lo);
+        if (hit && (!best || hit.score > best.score)) best = { i, ...hit };
+      });
+      if (!best) {
+        // the number is unreadable but the words are there, maybe in pieces ("Chance Of Getting" / "agic Items"):
+        // the option most of whose words are on the lines not read yet, rolled at random
+        const left = lines.map((l, i) => (used.has(i) || BASE_LINE.test(norm(l)) ? [] : tokens(l.replace(/\d+/g, ' '))));
+        const worded = s.choices!
+          .map((c, i) => {
+            const want = tokens((propLines([c.prop])[0]?.lo ?? '').replace(/[+-]?\d+%?/g, ' '));
+            const found = (t: string) => left.findIndex((ws) => ws.some((w) => w === t || (w.length > 3 && t.length > 3 && similarity(w, t) >= 0.75)));
+            const at = want.map(found).filter((k) => k >= 0);
+            return { i, at, share: want.length ? at.length / want.length : 0 };
+          })
+          .sort((x, y) => y.share - x.share);
+        if (worded[0] && worded[0].share >= 0.6 && worded[0].share > (worded[1]?.share ?? 0) + 0.3) {
+          const w = worded[0];
+          const c = s.choices![w.i];
+          // lines that gave two or more of its words are this stat's
+          w.at.filter((k, n) => w.at.indexOf(k) !== n).forEach((k) => used.add(k));
+          Object.assign(rolls, pickRolls([c], 'random'), { [s.key]: w.i });
+          shown.push(s.key);
+          if (c.variable) warnings.push(`Couldn't read the number on "${c.label}"; rolled ${rolls[c.key]} at random (${c.lo}–${c.hi}).`);
+          continue;
+        }
+        Object.assign(rolls, pickRolls([s], 'random'));
+        warnings.push(`Couldn't read "${s.label}"; picked ${s.options![rolls[s.key]].label} at random.`);
+        continue;
+      }
+      const c = s.choices![best.i];
+      best.at.forEach((i) => used.add(i));
+      seen++;
+      rolls[s.key] = best.i;
+      shown.push(s.key);
+      if (c.variable && best.value !== undefined) {
+        const v = c.lo < 0 && best.value > 0 ? -best.value : best.value;
+        if (v < c.lo || v > c.hi) errors.push(`"${c.label}" reads ${v}, outside its range (${c.lo}–${c.hi}). The listing may be edited or misread.`);
+        else (rolls[c.key] = v), shown.push(c.key);
+      }
+      continue;
+    }
     const texts = propLines([s.prop]);
     if (!s.variable) {
       if (texts.length) total++, (seen += texts.every((t) => hasLine(lines, t.lo)) ? 1 : 0);
@@ -368,7 +461,7 @@ function readRolls(
       warnings.push(`Couldn't read "${s.label}"; rolled ${rolls[s.key]} at random (${s.lo}–${s.hi}).`);
       continue;
     }
-    used.add(r.line);
+    r.at.forEach((i) => used.add(i));
     seen++;
     // "ease" (requirements) and other negative rolls read as a positive number on the listing
     let v = (s.lo < 0 && r.value > 0 ? -r.value : r.value) - (offsets[s.key] ?? 0);
@@ -1105,7 +1198,7 @@ export function titleWant(it: ListingItem): AskItem[] | string {
       return [{ code: it.code, qty: it.quantity, name: it.name }];
     case 'unique':
     case 'set':
-      return one({ kind: it.kind, id: it.id, ethereal: it.ethereal || undefined, atLeast: atLeast(rollSlots(it.kind, it.id), it.rolls, it.shown) });
+      return one({ kind: it.kind, id: it.id, ethereal: it.ethereal || undefined, atLeast: atLeast(chosenSlots(rollSlots(it.kind, it.id), it.rolls), it.rolls, it.shown) });
     case 'runeword':
       return one({ kind: 'runeword', id: it.row, code: it.code || undefined, ethereal: it.ethereal || undefined, atLeast: atLeast(runewordSlots(it.row), it.rolls, it.shown) });
     case 'base':
@@ -1160,8 +1253,12 @@ export function readListing(rawLines: string[], price?: string[], now: Date = ne
   return { ...r, errors, warnings, direction, want, ask: options.length ? options : undefined };
 }
 
+/** Words of Traderie's tag line ("Ladder · Reign Of The Warlock · PC · Softcore"): not part of the title. */
+const TAG_WORD = /\b(ladder|reign|warlock|pc|xbox|playstation|switch|softcore|hardcore|unidentified|ethereal)\b/;
+
 function readListingItem(rawLines: string[], now: Date): Omit<ListingResult, 'direction'> {
-  const all = rawLines.map((l) => l.trim()).filter(Boolean);
+  // a line with no letter or number is a picture read as marks (the pin or infinity sign after a title: "»", "°°")
+  const all = rawLines.map((l) => l.trim()).filter((l) => /[a-z0-9]/i.test(l));
   // "Trading For" starts the price; the seller, "High Rune Value" and the time follow. None of it is the item.
   const cut = all.findIndex((l) => PRICE_HEADING.test(norm(l)));
   const age = readAge(all, now);
@@ -1171,7 +1268,17 @@ function readListingItem(rawLines: string[], now: Date): Omit<ListingResult, 'di
   const TITLE = /^(?:\S{1,2}\s+)?(\d{1,3}) ?x /;
   const ti = itemLines.findIndex((l) => TITLE.test(norm(l)));
   const titleQty = ti >= 0 ? Number(TITLE.exec(norm(itemLines[ti]))![1]) : undefined;
-  const lines = itemLines.map((l, i) => (i === ti ? l.replace(/^\s*(?:\S{1,2}\s+)?\d{1,3}\s*[xX×]\s+/, '') : l));
+  let lines = itemLines.map((l, i) => (i === ti ? l.replace(/^\s*(?:\S{1,2}\s+)?\d{1,3}\s*[xX×]\s+/, '') : l));
+  // a long title wraps ("1 X Renewed Cold" / "Rupture"): the next line joins it when it's plain words, not the
+  // tags or a stat
+  const next = ti >= 0 ? lines[ti + 1] : undefined;
+  // (a picture after it may be read as a few marks: "Heavens °°")
+  const words = next?.replace(/[^a-z' ]/gi, ' ').replace(/\s+/g, ' ').trim() ?? '';
+  if (next !== undefined && !/\d/.test(next) && !TAG_WORD.test(norm(next)) && words.length >= 3 && next.replace(/[a-z' ]/gi, '').length <= 3) {
+    lines = [...lines.slice(0, ti), `${lines[ti]} ${words}`, ...lines.slice(ti + 2)];
+  }
+  // Renewed and Latent charms are titled with the charm's picture first ("Celtic Knot Renewed Crack Of The Heavens")
+  if (ti >= 0) lines[ti] = lines[ti].replace(/^.*?\b((?:renewed|latent)\s)/i, '$1');
   const title = ti >= 0 ? lines[ti] : undefined;
 
   const tags = readTags(itemLines);

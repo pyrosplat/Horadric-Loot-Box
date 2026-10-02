@@ -601,6 +601,11 @@ export function describeTemplate(kind: 'unique' | 'set' | 'runeword', id: number
     lines.push({ text: baseName, kind: 'base' });
     if (requiredLevel > 1) lines.push({ text: sprintf(GD.ui.ItemStats1p ?? 'Required Level: %d', requiredLevel), kind: 'req' });
     for (const l of propLines(row.props)) mod(l.text);
+    // Renewed charms roll one option from each of their affix groups
+    for (const [code] of row.props) {
+      const g = GD.propGroups?.[code];
+      if (g) mod(g.options.map((o) => propLines([o.prop])[0]?.text).filter(Boolean).join(' or '));
+    }
     if (kind === 'set') {
       const si = GD.setItems[id];
       for (const [n, props] of si.partial) for (const l of propLines(props)) lines.push({ text: l.text, kind: 'setbonus', bonus: { scope: 'item', when: `${n} pieces` } });

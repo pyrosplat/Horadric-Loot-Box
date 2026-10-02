@@ -39,7 +39,7 @@ export function GoldBar({ gref, label }: { gref: GoldRef; label: string }) {
     (t) =>
       t.docId === gref.docId ||
       store.docs.get(t.docId)?.doc?.kind === 'vault' ||
-      (t.docId === otherPane?.docId && (t.kind !== 'shared' || t.tab === otherPane.tab)),
+      (t.docId === otherPane?.docId && (t.kind !== 'shared' || t.tab === otherPane.tab || store.goldPooled(t.docId))),
   );
   const [target, setTarget] = useState<string>('');
   const [amount, setAmount] = useState('');

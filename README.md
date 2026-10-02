@@ -29,11 +29,12 @@ Trade in single player for items listed on Traderie, at the listing's price. Tur
 - **Buy:** paste (Ctrl+V) or drop a Traderie listing ("Trading For"), drag the runes, gems, keys or items it asks for into **Your offer**, then **Accept trade**.
 - **Sell:** switch to **Sell**, import a buyer's listing ("I Give" / "Offering"), drag in what they want, pick what you get, then **Sell**.
 - What you get lands in **Received**; drag it into a stash, character or vault and save.
+- **History** lists what you got and paid for each saved trade.
 - Listings must be PC, Ladder, Reign of the Warlock, posted in the last 3 days, and match your Softcore/Hardcore file. Screenshots are read on your computer; nothing is uploaded.
 
 Works with uniques, set items (and full sets), runewords, magic, rare and crafted items, bases, runes, gems, keys and uber parts. Rolls are checked against the item's real range; rolls a listing doesn't show are random when buying and don't matter when selling. Magic, rare and crafted items can be bought but not sold yet.
 
-**In your browser:** [Horadric Trading Post](https://pyrosplat.github.io/Horadric-Loot-Box/) is the Trade panel as a web page — nothing to install. Drop in your shared stash (`.d2i`) or a character (`.d2s`), trade, then save. Chrome and Edge write straight back to the file; other browsers download it for you to put back. Your saves never leave your computer. Close the game before saving.
+**In your browser:** [Horadric Trading Post](https://pyrosplat.github.io/Horadric-Loot-Box/) is the Trade panel as a web page — nothing to install. Drop in your shared stash (`.d2i`), a character (`.d2s`) or your whole save folder, trade, then save. Chrome and Edge write straight back to the file; other browsers download it for you to put back. Your saves never leave your computer. Close the game before saving.
 
 ## Getting started
 

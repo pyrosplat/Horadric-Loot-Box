@@ -7,6 +7,7 @@ import { useTooltip } from '../ui/Tooltip';
 import { isTradeable, nameOf } from './goods';
 import { AskLine, ScreenshotImport } from './ScreenshotImport';
 import { TradeGrid, displayItem, type GridEntry } from './TradeGrid';
+import { TradeHistory } from './TradeHistory';
 import { isTauri } from '../platform/tauri';
 
 const TRADERIE = 'https://traderie.com/diablo2resurrected';
@@ -243,6 +244,7 @@ export function TradeView() {
       </div>
 
       <Received />
+      <TradeHistory />
     </div>
   );
 }

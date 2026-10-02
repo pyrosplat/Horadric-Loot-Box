@@ -98,7 +98,7 @@ export function StashView({ docId, stash, pane, tab, matches }: { docId: string;
                 </button>
               </div>
             )}
-            <GoldBar gref={{ docId, kind: 'shared', tab: idx }} label="Gold" />
+            <GoldBar gref={store.sharedGoldRef(docId, idx)!} label="Gold" />
           </div>
         </>
       ) : onBoard ? (

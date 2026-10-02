@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { GD, type D2Character, type D2SharedStash } from '../core';
+import { DEMO_FILES } from '../platform/demo';
 import { createDroppedPlatform } from '../platform/dropped';
 import { ArtSettings, ConfirmItemDelete, Credit, HeaderBtn, Hint, ScaleSetting, Section, SharedStashSetting, Toasts } from '../ui/App';
 import { CharacterView } from '../ui/CharacterView';
@@ -7,55 +8,14 @@ import { StoreContext, useStore } from '../ui/context';
 import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale, defaultUiScale } from '../ui/scale';
 import { StashView } from '../ui/StashView';
 import { TooltipProvider } from '../ui/Tooltip';
+import { fromDrop, fromInput, pickFiles, pickFolder, type Picked } from './files';
 import { WebStore } from './WebStore';
 
 // the Trade panel pulls in the screenshot reader, so it loads after the first paint
 const TradeView = lazy(() => import('../trade/TradeView').then((m) => ({ default: m.TradeView })));
 
 const REPO = 'https://github.com/pyrosplat/Horadric-Loot-Box';
-const SAMPLES = ['ModernSharedStashSoftCoreV2.d2i', 'Warlock_v105.d2s'];
-
-type Picked = { name: string; data: Uint8Array; modified?: number; handle?: FileSystemFileHandle };
-
-/** Files from a drop: with a writable handle where the browser gives one (Chrome, Edge). */
-async function fromDrop(dt: DataTransfer): Promise<Picked[]> {
-  const items = [...dt.items].filter((i) => i.kind === 'file');
-  const handles = await Promise.all(
-    items.map((i) => (i as DataTransferItem & { getAsFileSystemHandle?(): Promise<FileSystemHandle | null> }).getAsFileSystemHandle?.().catch(() => null) ?? Promise.resolve(null)),
-  );
-  const out: Picked[] = [];
-  for (let k = 0; k < items.length; k++) {
-    const h = handles[k];
-    const file = h && h.kind === 'file' ? await (h as FileSystemFileHandle).getFile() : items[k].getAsFile();
-    if (!file) continue;
-    out.push({ name: file.name, data: new Uint8Array(await file.arrayBuffer()), modified: file.lastModified, handle: h?.kind === 'file' ? (h as FileSystemFileHandle) : undefined });
-  }
-  return out;
-}
-
-/** The file dialog: Chrome and Edge's picker (writable), else a plain file input. */
-async function pickFiles(input: HTMLInputElement | null): Promise<Picked[] | null> {
-  const picker = (window as unknown as { showOpenFilePicker?: (o: object) => Promise<FileSystemFileHandle[]> }).showOpenFilePicker;
-  if (picker) {
-    try {
-      const hs = await picker({ id: 'd2r-saves', multiple: true, types: [{ description: 'Diablo II: Resurrected saves', accept: { 'application/octet-stream': ['.d2i', '.d2s'] } }] });
-      return Promise.all(
-        hs.map(async (h) => {
-          const f = await h.getFile();
-          return { name: f.name, data: new Uint8Array(await f.arrayBuffer()), modified: f.lastModified, handle: h };
-        }),
-      );
-    } catch {
-      return null; // cancelled
-    }
-  }
-  input?.click();
-  return null;
-}
-
-async function fromInput(list: FileList | null): Promise<Picked[]> {
-  return Promise.all([...(list ?? [])].map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()), modified: f.lastModified })));
-}
+const SAMPLES = DEMO_FILES;
 
 export function WebApp() {
   const store = useMemo(() => new WebStore(createDroppedPlatform()), []);
@@ -83,6 +43,7 @@ function Logo() {
 function Page() {
   const store = useStore() as WebStore;
   const input = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement | null>(null);
   const [over, setOver] = useState(false);
   const [settings, setSettings] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -90,6 +51,15 @@ function Page() {
 
   const add = (files: Picked[] | null) => files?.length && store.addFiles(files);
   const choose = async () => add(await pickFiles(input.current));
+  const chooseFolder = async () => {
+    try {
+      const files = await pickFolder(folderInput.current);
+      if (files && !files.length) store.toast('error', 'No saves (.d2s, .d2i) in that folder.');
+      else add(files);
+    } catch (e) {
+      store.toast('error', `Couldn't open that folder: ${(e as Error).message}`);
+    }
+  };
   const samples = async () => {
     const base = `${import.meta.env.BASE_URL}demo/`;
     const files = await Promise.all(SAMPLES.map(async (name) => ({ name, data: new Uint8Array(await (await fetch(base + name)).arrayBuffer()) })));
@@ -142,10 +112,27 @@ function Page() {
         if (!isFileDrag(e)) return;
         e.preventDefault();
         setOver(false);
-        add(await fromDrop(e.dataTransfer));
+        const dropped = await fromDrop(e.dataTransfer);
+        if (dropped.length) add(dropped);
+        else store.toast('error', 'Drop a .d2i shared stash, a .d2s character, or your save folder.');
       }}
     >
       <input ref={input} type="file" accept=".d2i,.d2s" multiple hidden onChange={async (e) => (add(await fromInput(e.target.files)), (e.target.value = ''))} />
+      <input
+        ref={(el) => {
+          folderInput.current = el;
+          el?.setAttribute('webkitdirectory', '');
+        }}
+        type="file"
+        multiple
+        hidden
+        onChange={async (e) => {
+          const files = await fromInput(e.target.files);
+          e.target.value = '';
+          if (files.length) add(files);
+          else store.toast('error', 'No saves (.d2s, .d2i) in that folder.');
+        }}
+      />
       <header className="flex items-center gap-3 border-b border-ink-800 bg-ink-900 px-4 py-2">
         <Logo />
         <span className="rounded border border-ink-600 px-1.5 py-[1px] text-[10px] uppercase tracking-wider text-ink-400">Web</span>
@@ -167,6 +154,11 @@ function Page() {
             </select>
           )}
           {loaded && <HeaderBtn onClick={choose}>Add files</HeaderBtn>}
+          {loaded && (
+            <HeaderBtn onClick={chooseFolder} title="Load every Reign of the Warlock character and stash in your save folder">
+              Add folder
+            </HeaderBtn>
+          )}
           {loaded && store.hasChanges && (
             <HeaderBtn
               onClick={() => {
@@ -206,12 +198,12 @@ function Page() {
           {!store.savesInPlace && store.dirtyDocs.length > 0 && ' Saving downloads the changed file: put it back in your save folder, replacing the old one.'}
         </div>
       )}
-      {loaded ? <Trading /> : <DropZone onChoose={choose} onSamples={samples} />}
+      {loaded ? <Trading /> : <DropZone onChoose={choose} onFolder={chooseFolder} onSamples={samples} />}
       {over && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-xl border-2 border-dashed border-gold-400 bg-ink-900/95 px-10 py-8 text-center shadow-tip">
-            <p className="font-display text-xl text-gold-300">Drop your save here</p>
-            <p className="mt-1 text-[13px] text-ink-300">A Reign of the Warlock shared stash (.d2i) or character (.d2s)</p>
+            <p className="font-display text-xl text-gold-300">Drop your saves here</p>
+            <p className="mt-1 text-[13px] text-ink-300">A Reign of the Warlock shared stash (.d2i), a character (.d2s), or your whole save folder</p>
           </div>
         </div>
       )}
@@ -223,7 +215,7 @@ function Page() {
   );
 }
 
-function DropZone({ onChoose, onSamples }: { onChoose: () => void; onSamples: () => void }) {
+function DropZone({ onChoose, onFolder, onSamples }: { onChoose: () => void; onFolder: () => void; onSamples: () => void }) {
   return (
     <main className="flex flex-1 items-center justify-center overflow-auto bg-[radial-gradient(ellipse_at_top,#2a2217,#0b0a09_60%)] p-6">
       <div className="w-full max-w-2xl rounded-xl border border-ink-700 bg-ink-900/80 p-8 shadow-tip">
@@ -236,8 +228,11 @@ function DropZone({ onChoose, onSamples }: { onChoose: () => void; onSamples: ()
           onClick={onChoose}
           className="mt-6 flex w-full flex-col items-center rounded-lg border-2 border-dashed border-gold-600/60 bg-gold-600/5 px-6 py-10 text-center hover:border-gold-400 hover:bg-gold-600/10"
         >
-          <span className="font-display text-lg text-gold-300">Drop your shared stash or character here</span>
+          <span className="font-display text-lg text-gold-300">Drop your save folder, shared stash or character here</span>
           <span className="mt-1 text-[13px] text-ink-400">or click to choose files (.d2i, .d2s)</span>
+        </button>
+        <button onClick={onFolder} className="mt-2 w-full rounded border border-ink-600 px-3 py-2 text-[13px] text-ink-200 hover:bg-ink-800">
+          Choose your save folder: every Reign of the Warlock character and stash loads at once
         </button>
         <div className="mt-4 rounded border border-ink-700 bg-ink-950 p-3 text-[12px] leading-relaxed text-ink-400">
           <p>Your saves are in:</p>

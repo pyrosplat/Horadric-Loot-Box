@@ -22,8 +22,11 @@ export interface RollSlot {
   /** 0 for the item's own properties, or the number of set pieces a bonus needs. */
   pieces: number;
   prop: PropDef;
-  /** What the roll picks: a number in lo–hi, a character class, a skill or a socket count. */
-  kind: 'value' | 'class' | 'skill' | 'sockets';
+  /**
+   * What the roll picks: a number in lo–hi, a character class, a skill, a socket count, or (RotW Renewed charms) which
+   * of a property group's options the item has: then `choices` are those options and the chosen one rolls as usual.
+   */
+  kind: 'value' | 'class' | 'skill' | 'sockets' | 'group';
   lo: number;
   hi: number;
   /** For class and skill picks: the values the roll can take, with names. */
@@ -32,7 +35,13 @@ export interface RollSlot {
   label: string;
   /** Whether this property actually varies. */
   variable: boolean;
+  /** Groups: each option as its own slot (keys "p3.0", "p3.1", …), and how likely each is. */
+  choices?: RollSlot[];
+  weights?: number[];
 }
+
+/** A property group the tables name but don't define (a Renewed charm's "Gelid-Affix5"): the game gives nothing for it. */
+const emptyGroup = (code: string) => !GD.propGroups[code] && /-Affix\d+$/.test(code);
 
 export type Rolls = Record<string, number>;
 
@@ -52,7 +61,11 @@ export function unbuildableReason(kind: TemplateKind, id: number): string | unde
   if (kind === 'unique' && Object.values(GD.uniques).some((u) => u.name === `Latent ${row.name}`)) return `Replaced by Latent ${row.name}`;
   if (def.quest) return 'Quest items can’t be traded';
   const props = [...row.props, ...(kind === 'set' ? GD.setItems[id].partial.flatMap(([, p]) => p) : [])];
-  for (const [code] of props) if (!propDefs(code).length) return 'Uses properties this app can’t build yet';
+  for (const [code] of props) {
+    if (emptyGroup(code)) continue;
+    const codes = GD.propGroups[code] ? GD.propGroups[code].options.map((o) => o.prop[0]) : [code];
+    if (codes.some((c) => !propDefs(c).length)) return 'Uses properties this app can’t build yet';
+  }
   return undefined;
 }
 
@@ -78,6 +91,23 @@ export function buildableTemplates(kind: TemplateKind): { id: number; name: stri
 
 function slotFor(key: string, pieces: number, prop: PropDef, baseCode: string): RollSlot {
   const [code, param, min, max] = prop;
+  const group = GD.propGroups[code];
+  if (group) {
+    const choices = group.options.map((o, i) => slotFor(`${key}.${i}`, pieces, o.prop, baseCode));
+    return {
+      key,
+      pieces,
+      prop,
+      kind: 'group',
+      lo: 0,
+      hi: choices.length - 1,
+      options: choices.map((c, i) => ({ value: i, label: c.label })),
+      label: `One of: ${choices.map((c) => c.label).join(' or ')}`,
+      variable: choices.length > 1 || choices.some((c) => c.variable),
+      choices,
+      weights: group.options.map((o) => o.chance),
+    };
+  }
   const label = propLines([prop]).map((l) => l.text).join(', ');
   const funcs = propDefs(code).map((f) => f.func);
   const base = { key, pieces, prop, label };
@@ -109,13 +139,19 @@ function slotFor(key: string, pieces: number, prop: PropDef, baseCode: string): 
 export function rollSlots(kind: TemplateKind, id: number): RollSlot[] {
   const row = templateRow(kind, id);
   if (!row) return [];
-  const out = row.props.map((p, i) => slotFor(`p${i}`, 0, p, row.code));
+  const out = row.props.map((p, i) => (emptyGroup(p[0]) ? undefined : slotFor(`p${i}`, 0, p, row.code))).filter((x): x is RollSlot => !!x);
   if (kind === 'set') for (const [n, props] of GD.setItems[id].partial) props.forEach((p, i) => out.push(slotFor(`b${n}.${i}`, n, p, row.code)));
   return out;
 }
 
+/** The slots of an item plus, for each group, the option it rolled (to read or compare that option's value). */
+export function chosenSlots(slots: RollSlot[], rolls: Rolls): RollSlot[] {
+  return slots.flatMap((s) => (s.kind === 'group' ? [s, s.choices![rolls[s.key] ?? 0]].filter(Boolean) : [s]));
+}
+
 /** The best roll of a slot: the highest number, except for requirements, where lower is better. */
 export function perfectRoll(slot: RollSlot): number {
+  if (slot.kind === 'group') return 0;
   if (slot.kind === 'value' && slot.prop[0] === 'ease') return slot.lo;
   return slot.hi;
 }
@@ -125,6 +161,20 @@ export function pickRolls(slots: RollSlot[], mode: 'random' | 'perfect', keep: R
   const out: Rolls = {};
   for (const s of slots) {
     if (!s.variable) continue;
+    if (s.kind === 'group') {
+      // which option (weighted like the game), then that option's own roll
+      const w = s.weights ?? s.choices!.map(() => 1);
+      let idx = keep[s.key];
+      if (idx === undefined && mode === 'perfect') idx = 0;
+      if (idx === undefined) {
+        let r = Math.random() * w.reduce((a, b) => a + b, 0);
+        idx = w.findIndex((x) => (r -= x) < 0);
+        if (idx < 0) idx = w.length - 1;
+      }
+      out[s.key] = idx;
+      Object.assign(out, pickRolls([s.choices![idx]], mode, keep));
+      continue;
+    }
     if (keep[s.key] !== undefined) out[s.key] = keep[s.key];
     else if (mode === 'perfect') out[s.key] = perfectRoll(s);
     else if (s.options) out[s.key] = s.options[Math.floor(Math.random() * s.options.length)].value;
@@ -140,6 +190,12 @@ interface Built {
 }
 
 function statsForSlot(slot: RollSlot, rolls: Rolls, into: Built) {
+  if (slot.kind === 'group') {
+    const idx = rolls[slot.key] ?? 0;
+    const choice = slot.choices![idx];
+    if (!choice) throw new Error(`${slot.label}: option ${idx} doesn't exist`);
+    return statsForSlot(choice, rolls, into);
+  }
   const [code, param, min, max] = slot.prop;
   const v = slot.variable ? rolls[slot.key] ?? perfectRoll(slot) : slot.kind === 'value' ? Math.max(min, max) : slot.hi;
   if (v < slot.lo || v > slot.hi) throw new Error(`${slot.label}: ${v} is outside ${slot.lo}–${slot.hi}`);

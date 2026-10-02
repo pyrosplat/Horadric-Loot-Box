@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GD, affixRows, buildableTemplates, createAffixItem, createRunewordItem, createBaseItem, createTemplateItem, describeItem, rollSlots, type Rolls } from '../src/core';
+import { GD, affixRows, buildableTemplates, createAffixItem, createRunewordItem, createBaseItem, createTemplateItem, describeItem, pickRolls, rollSlots, type Rolls } from '../src/core';
 import { askText, readAsk, readListing, readTags, tagErrors, type ListingItem } from '../src/trade/listing';
 import { columnLines } from '../src/trade/ocr';
 
@@ -58,6 +58,90 @@ describe('reading uniques and set items', () => {
       expect((r.item as { name: string }).name, name).toBe(name);
       for (const [k, v] of Object.entries(rolls)) expect((r.item as { rolls: Rolls }).rolls[k], `${name} ${k}`).toBe(v);
     }
+  });
+
+  test('Renewed charms: every affix reads back with the option it rolled and its value', () => {
+    const renewed = buildableTemplates('unique').filter((t) => t.name.startsWith('Renewed '));
+    expect(renewed.map((t) => t.name).sort()).toEqual(
+      ['Renewed Black Cleft', 'Renewed Bone Break', 'Renewed Cold Rupture', 'Renewed Crack of the Heavens', 'Renewed Flame Rift', 'Renewed Rotting Fissure'],
+    );
+    for (const t of renewed)
+      for (let n = 0; n < 8; n++) {
+        const slots = rollSlots('unique', t.id);
+        const rolls = pickRolls(slots, 'random');
+        const r = readListing(listing('unique', t.name, rolls));
+        expect(r.errors, t.name).toEqual([]);
+        expect(r.warnings, t.name).toEqual([]);
+        expect((r.item as { name: string }).name).toBe(t.name);
+        expect((r.item as { rolls: Rolls }).rolls, `${t.name} ${JSON.stringify(rolls)}`).toEqual(rolls);
+      }
+  }, 120_000);
+
+  test('real Renewed charm listings (Traderie shows only the five rolled affixes)', () => {
+    const tail = (price: string) => ['Trading For', price, 'High Rune Value: 0.1', '2 minutes ago'];
+    const cases: [string[], string, Record<string, number>][] = [
+      [['1 X Monster Renewed', 'Flame Rift', 'Ladder · Reign Of The Warlock ·', 'PC · Softcore', '+15% Faster Hit Recovery', '-7% To Enemy Fire Resistance', '+44 To Mana', 'Damage Reduced By 5', '21% Extra Gold From Monsters', ...tail('1 X Mal Rune')],
+        'Renewed Flame Rift', { balance1: 15, 'pierce-fire': 7, mana: 44, 'red-dmg': 5, 'gold%': 21 }],
+      [['1 X Renewed Flame Rift', 'Ladder · Reign Of The Warlock ·', 'PC · Softcore', '+7% Faster Run/Walk', '-8% To Enemy Fire Resistance', '+34 To Life', 'Magic Damage Reduced By 9', '21% Better Chance Of Getting', 'Magic Items', ...tail('1 X Vex Rune')],
+        'Renewed Flame Rift', { move1: 7, 'pierce-fire': 8, hp: 34, 'red-mag': 9, 'mag%': 21 }],
+      [['1 X Renewed Cold', 'Rupture', 'Ladder · Reign Of The Warlock ·', 'PC · Softcore', '+19% Faster Hit Recovery', '-9% To Enemy Cold Resistance', '+28 To Life', 'Magic Damage Reduced By 10', '37% Extra Gold From Monsters', 'Trading For', '1 X Gul Rune OR', '1 X Ist Rune', 'High Rune Value: 0.25 or 0.16', '1 minute ago'],
+        'Renewed Cold Rupture', { balance1: 19, 'pierce-cold': 9, hp: 28, 'red-mag': 10, 'gold%': 37 }],
+      [['1 X Celtic Knot Renewed', 'Crack Of The Heavens', 'Ladder · Reign Of The Warlock ·', 'PC · Softcore', '+18% Faster Hit Recovery', '+13% To Lightning Skill Damage', '+58 To Mana', 'Magic Damage Reduced By 9', '40% Extra Gold From Monsters', ...tail('1 X Lo Rune')],
+        'Renewed Crack of the Heavens', { balance1: 18, 'extra-ltng': 13, mana: 58, 'red-mag': 9, 'gold%': 40 }],
+    ];
+    for (const [lines, name, want] of cases) {
+      const r = readListing(lines);
+      expect(r.errors, name).toEqual([]);
+      expect(r.warnings, name).toEqual([]);
+      expect(r.tags?.mode).toBe('softcore');
+      const item = r.item as { kind: string; id: number; name: string; rolls: Rolls };
+      expect(item.name, lines[0]).toBe(name);
+      // the options it picked, by property code, and their values
+      const got: Record<string, number> = {};
+      for (const s of rollSlots('unique', item.id))
+        if (s.kind === 'group') {
+          const c = s.choices![item.rolls[s.key]];
+          got[c.prop[0]] = item.rolls[c.key] ?? c.hi;
+        }
+      expect(got, name).toEqual(want);
+    }
+  });
+
+  test('real Latent charm listings (picture-first titles, wrapped stats, minus stats written as plus)', () => {
+    const head = ['Ladder · Reign Of The Warlock ·', 'PC · Softcore'];
+    const tail = (...price: string[]) => ['Trading For', ...price, 'High Rune Value: 0.3', '2 minutes ago'];
+    const cases: [string[], string, string, number][] = [
+      [['1 X Monster Latent Cold', 'Rupture', ...head, '300Monster Cold Immunity Is', 'Sundered', 'Cold Resist +84%', ...tail('2 X Ist Rune')], 'Latent Cold Rupture', 'res-cold', -84],
+      [['1 X Latent Crack Of The', 'Heavens', ...head, '300Monster Lightning Immunity', 'Is Sundered', 'Lightning Resist +90%', ...tail('1 X Ohm Rune')], 'Latent Crack of the Heavens', 'res-ltng', -90],
+      [['1 X Monster Latent Bone', 'Break', ...head, '300Monster Physical Immunity Is', 'Sundered', 'Physical Damage Received', 'Reduced By 10%', ...tail('1 X Jah Rune OR', '2 X Ber Rune OR', '2 X Lo Rune')], 'Latent Bone Break', 'red-dmg%', -10],
+    ];
+    for (const [lines, name, prop, value] of cases) {
+      const r = readListing(lines);
+      expect(r.errors, name).toEqual([]);
+      expect(r.warnings, name).toEqual([]);
+      expect(r.confidence, name).toBe(1); // the Sundered line counts too
+      const item = r.item as { kind: string; id: number; name: string; rolls: Rolls };
+      expect(item.name).toBe(name);
+      const slot = rollSlots('unique', item.id).find((s) => s.prop[0] === prop)!;
+      expect(item.rolls[slot.key], name).toBe(value);
+    }
+    expect(readListing(cases[2][0]).ask?.length).toBe(3);
+  });
+
+  test('a Renewed charm sold to a buyer: its shown rolls are minimums, and the option must match', async () => {
+    const { titleWant } = await import('../src/trade/listing');
+    const { wantMatches } = await import('../src/core');
+    const id = idOf('unique', 'Renewed Cold Rupture');
+    const slots = rollSlots('unique', id);
+    const g2 = slots.find((s) => s.prop[0] === 'Gelid-Affix2')!; // magic find (0) or gold find (1)
+    const rolls = { ...pickRolls(slots, 'random'), [g2.key]: 0, [`${g2.key}.0`]: 20 };
+    const r = readListing(listing('unique', 'Renewed Cold Rupture', rolls));
+    const want = titleWant(r.item!) as { item: Parameters<typeof wantMatches>[0] }[];
+    const mk = (over: Rolls) => createTemplateItem('unique', id, { ...rolls, ...over });
+    expect(wantMatches(want[0].item, mk({}))).toBe(true);
+    expect(wantMatches(want[0].item, mk({ [`${g2.key}.0`]: 25 }))).toBe(true); // better magic find
+    expect(wantMatches(want[0].item, mk({ [`${g2.key}.0`]: 14 }))).toBe(false); // worse
+    expect(wantMatches(want[0].item, mk({ [g2.key]: 1, [`${g2.key}.1`]: 55 }))).toBe(false); // gold find instead
   });
 
   test('the Hellfire Torch class and the Rainbow Facet variant come from the stats', () => {
@@ -138,6 +222,35 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
     expect(r.item).toMatchObject({ kind: 'base', code: 'usk', sockets: 3, defense: 155, superior: { row: 2, values: [14] }, ethereal: false });
     const b = r.item as Extract<ListingItem, { kind: 'base' }>;
     expect(describeItem(createBaseItem('usk', { sockets: 3, defense: b.defense, superior: b.superior })).lines.map((l) => l.text)).toContain('Defense: 176');
+  });
+
+  test('Renewed and Latent charms: wrapped titles with a picture after them, wrapped stats, minus stats shown as plus', () => {
+    const cases: [string, string, Record<string, number>, string][] = [
+      ['latent-cold-rupture', 'Latent Cold Rupture', { 'res-cold': -84 }, '2× Ist Rune'],
+      ['latent-crack-of-the-heavens', 'Latent Crack of the Heavens', { 'res-ltng': -90 }, '1× Ohm Rune'], // "Heavens °°"
+      ['latent-bone-break', 'Latent Bone Break', { 'red-dmg%': -10 }, '1× Jah Rune or 2× Ber Rune or 2× Lo Rune'], // "ReducedBy10%"
+      ['renewed-cold-rupture', 'Renewed Cold Rupture', { balance1: 19, 'pierce-cold': 9, hp: 28, 'red-mag': 10, 'gold%': 37 }, '1× Gul Rune or 1× Ist Rune'], // "»" between the title's lines
+      ['renewed-crack-of-the-heavens', 'Renewed Crack of the Heavens', { balance1: 18, 'extra-ltng': 13, mana: 58, 'red-mag': 9, 'gold%': 40 }, '1× Lo Rune'],
+      ['renewed-flame-rift', 'Renewed Flame Rift', { move1: 7, 'pierce-fire': 8, hp: 34, 'red-mag': 9 }, '1× Vex Rune'], // "+347To Life"
+    ];
+    for (const [f, name, want, price] of cases) {
+      const r = read(f);
+      expect(r.errors, f).toEqual([]);
+      const item = r.item as { id: number; name: string; rolls: Rolls };
+      expect(item.name, f).toBe(name);
+      const got: Record<string, number> = {};
+      for (const s of rollSlots('unique', item.id)) {
+        const c = s.kind === 'group' ? s.choices![item.rolls[s.key]] : s;
+        if (c.variable) got[c.prop[0]] = item.rolls[c.key];
+      }
+      expect(got, f).toMatchObject(want);
+      expect(askText(r.ask ?? []), f).toBe(price);
+      // the magic find number on the Flame Rift is unreadable: the option is known from its words, the roll is random
+      if (f === 'renewed-flame-rift') {
+        expect(r.warnings.join(' ')).toMatch(/Couldn't read the number on .*Better Chance of Getting Magic Items.*at random \(14–25\)/);
+        expect(got['mag%']).toBeGreaterThanOrEqual(14);
+      } else expect(r.warnings, f).toEqual([]);
+    }
   });
 
   test('magic items: split into the prefix and suffix they must have, with the values read', () => {

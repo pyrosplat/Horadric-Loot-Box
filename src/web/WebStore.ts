@@ -3,8 +3,8 @@ import type { SaveFileEntry } from '../platform';
 import { DROP_FOLDER, type DroppedPlatform } from '../platform/dropped';
 import { Store, TRADE_ID, type AnyDoc, type LoadedDoc } from '../state/store';
 
-/** The web page starts at 125% (until the player changes it). */
-export const WEB_UI_SCALE = 1.25;
+/** The web page's starting zoom (until the player changes it). */
+export const WEB_UI_SCALE = 1;
 
 /** Reign of the Warlock saves only: shared stashes and characters. */
 const isRotw = (doc: AnyDoc) => (doc.kind === 'stash' ? doc.modern : doc.kind === 'character' ? doc.gameVersion >= 3 : false);
@@ -38,7 +38,10 @@ export class WebStore extends Store {
     const list = this.saves;
     const first = (keep && this.docs.has(keep) ? this.docs.get(keep) : undefined) ?? list[0];
     this.panes = [first ? { docId: first.id, tab: this.startTab(first) } : { tab: 0 }, { docId: TRADE_ID, tab: 0 }];
-    if (this.turnedAway.length) this.toast('error', `${this.turnedAway.join('; ')}. Trading works with Reign of the Warlock saves only.`);
+    const away = this.turnedAway;
+    // a whole save folder usually has older characters too: say how many were left out, not each one
+    if (away.length > 3) this.toast(list.length ? 'info' : 'error', `Loaded ${list.length} Reign of the Warlock save${list.length === 1 ? '' : 's'}; left out ${away.length} other files. Trading works with Reign of the Warlock saves only.`);
+    else if (away.length) this.toast('error', `${away.join('; ')}. Trading works with Reign of the Warlock saves only.`);
     this.turnedAway = [];
   }
 
@@ -66,16 +69,17 @@ export class WebStore extends Store {
   }
 
   /** Adds dropped or picked files and reloads. Refused mid-trade or with unsaved changes. */
-  async addFiles(list: { name: string; data: Uint8Array; modified?: number; handle?: FileSystemFileHandle }[]) {
+  async addFiles(list: { name: string; data: Uint8Array; modified?: number; handle?: FileSystemFileHandle; parent?: FileSystemDirectoryHandle }[]) {
     const saves = list.filter((f) => /\.(d2s|d2i)$/i.test(f.name));
-    if (!saves.length) return this.toast('error', 'Drop a .d2i shared stash or a .d2s character.');
+    if (!saves.length) return this.toast('error', 'Drop a .d2i shared stash, a .d2s character, or your save folder.');
     const reason = this.hasChanges ? 'Save or discard your changes first (Discard changes, at the top).' : undefined;
     if (reason) return this.toast('error', reason);
     this.tradeClear();
     const paths = this.platform.add(saves);
     await this.openFolder(DROP_FOLDER);
-    // show the newest drop on the left when it loaded
-    const shown = paths.find((p) => this.docs.has(p));
+    // show the newest drop on the left when it loaded; of a whole folder, the softcore shared stash
+    const added = new Set(paths);
+    const shown = paths.length > 1 ? this.saves.find((e) => added.has(e.id))?.id : paths.find((p) => this.docs.has(p));
     if (shown) this.use(shown);
   }
 

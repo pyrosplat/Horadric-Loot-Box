@@ -30,15 +30,8 @@ function demoArt(): ArtBackend {
 }
 
 
-const DEMO_FILES = [
-  'ChaosSC.d2s',
-  'Warlock_v105.d2s',
-  'Soska.d2s',
-  'Roka.d2s',
-  'barbexp_v105.d2s',
-  'ModernSharedStashSoftCoreV2.d2i',
-  'SharedStashSoftCoreV2.d2i',
-];
+/** The sample saves (public/demo): real Reign of the Warlock characters and their shared stash. */
+export const DEMO_FILES = ['ModernSharedStashSoftCoreV2.d2i', 'Sorceress.d2s', 'Amazon.d2s', 'Druid.d2s', 'Warlock.d2s'];
 
 /** In-memory sandbox using the bundled sample saves. Nothing touches the disk. */
 export function createDemoPlatform(): Platform {

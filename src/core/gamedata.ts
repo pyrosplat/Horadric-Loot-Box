@@ -115,6 +115,8 @@ export interface GameData {
   items: Record<string, ItemDef>;
   itemOrder: string[];
   uniques: Record<string, { name: string; code: string; levelReq: number; disabled?: boolean; carry1?: number; noChronicle?: boolean; props: PropDef[] }>;
+  /** Properties that roll one of several options (RotW Renewed charms' affixes), weighted by `chance`. */
+  propGroups: Record<string, { pick: number; options: { prop: PropDef; chance: number }[] }>;
   setItems: Record<string, { name: string; set: string; setKey: string; code: string; levelReq: number; noChronicle?: boolean; props: PropDef[]; partial: [number, PropDef[]][] }>;
   sets: Record<string, { name: string; partial: [number, PropDef[]][]; full: PropDef[] }>;
   runewords: { row: number; key: string; name: string; complete: boolean; runes: string[]; itypes: string[]; props: PropDef[] }[];
