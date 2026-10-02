@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.1
+
+- Fixed: mercenaries only take the gear their kind can use. The Act 5 Frenzy Barbarian holds two one-handed swords.
+
 ## 2.4.0
 
 - Trade: Renewed charms. Latent charm listings now read correctly.

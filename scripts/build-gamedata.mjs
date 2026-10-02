@@ -372,7 +372,8 @@ for (const r of readTsv('hireling')) {
     nameLists.push(nameRange(r.NameFirst, r.NameLast));
   }
   const skills = [1, 2, 3, 4, 5, 6].map((n) => r[`Skill${n}`]).filter((x) => x && isNaN(Number(x)));
-  mercs[r.Id] = { cls: r.Hireling, act: int(r.Act), diff: int(r.Difficulty), expPerLvl: int(r['Exp/Lvl']), skills, names: nameListIndex.get(key) };
+  // unit: the monster the hireling is (Class), which decides what it can hold; eq: the class whose items it may use
+  mercs[r.Id] = { cls: r.Hireling, act: int(r.Act), diff: int(r.Difficulty), expPerLvl: int(r['Exp/Lvl']), skills, names: nameListIndex.get(key), unit: int(r.Class), eq: r.equivalentcharclass || undefined };
 }
 
 // ---------- misc UI strings ----------

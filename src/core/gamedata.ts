@@ -141,8 +141,11 @@ export interface GameData {
   superior: { mods: PropDef[]; fits: string[] }[];
   /** automagic.txt by row (the save's auto-affix id is row + 1). */
   automagic: { name: string; group: number; spawnable: boolean; level: number; maxLevel?: number; levelReq: number; mods: PropDef[]; itypes: string[]; etypes: string[] }[];
-  /** hireling.txt by Id: class, act, difficulty hired in, experience factor, skills, index into mercNames. */
-  mercs: Record<string, { cls: string; act: number; diff: number; expPerLvl: number; skills: string[]; names: number }>;
+  /**
+   * hireling.txt by Id: class, act, difficulty hired in, experience factor, skills, index into mercNames.
+   * unit: the hireling's monster id (hireling.txt Class); eq: the class whose items it may use (equivalentcharclass).
+   */
+  mercs: Record<string, { cls: string; act: number; diff: number; expPerLvl: number; skills: string[]; names: number; unit?: number; eq?: string }>;
   mercNames: string[][];
   gems: Record<string, { name: string; letter?: string; weapon: GemMod[]; helm: GemMod[]; shield: GemMod[] }>;
   properties: Record<string, { func: number; stat?: string; val?: string }[]>;

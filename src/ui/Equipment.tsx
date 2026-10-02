@@ -1,4 +1,4 @@
-import type { D2Item, MercInfo } from '../core';
+import { itemName, mercGearProblem, type D2Character, type D2Item, type MercInfo } from '../core';
 import { itemKey } from '../state/store';
 import { cellBackground } from './Grid';
 import { useStore, countFor } from './context';
@@ -39,12 +39,24 @@ const SWAP: SlotDef[] = [
   { loc: LOC.leftSwap, x: 0, y: 4.25, w: 2, h: 4, label: 'Swap Left' },
 ];
 
-const MERC: SlotDef[] = [
+const MERC_WORN: SlotDef[] = [
   { loc: LOC.head, x: 0, y: 0, w: 2, h: 2, label: 'Helm' },
   { loc: LOC.torso, x: 0, y: 2.2, w: 2, h: 3, label: 'Armor' },
   { loc: LOC.rightHand, x: 2.2, y: 0, w: 2, h: 4, label: 'Weapon' },
-  { loc: LOC.leftHand, x: 2.2, y: 4.2, w: 2, h: 2, label: 'Shield' },
 ];
+const MERC_SHIELD: SlotDef = { loc: LOC.leftHand, x: 2.2, y: 4.2, w: 2, h: 2, label: 'Shield' };
+const MERC_SECOND: SlotDef = { loc: LOC.leftHand, x: 4.4, y: 0, w: 2, h: 4, label: 'Weapon' };
+
+/**
+ * A mercenary's slots: helm, armor and a weapon, plus a shield (Iron Wolves) or a second weapon (the Frenzy
+ * Barbarian). The second hand is also shown when the kind of mercenary isn't known or something is already in it.
+ */
+function mercSlots(info: MercInfo | undefined, items: D2Item[]): SlotDef[] {
+  const off = info?.gear?.offHand;
+  if (off === 'weapon') return [...MERC_WORN, MERC_SECOND];
+  if (off === 'shield' || !info?.gear || items.some((i) => i.bodyLoc === LOC.leftHand)) return [...MERC_WORN, MERC_SHIELD];
+  return MERC_WORN;
+}
 
 export function Panel({ title, children, className, right }: { title: string; children: React.ReactNode; className?: string; right?: React.ReactNode }) {
   return (
@@ -119,7 +131,12 @@ export function EquipmentPanel({ docId, pane, equipped, cell }: { docId: string;
   );
 }
 
-export function MercPanel({ docId, pane, items, cell, info }: { docId: string; pane: 0 | 1; items: D2Item[]; cell: number; info?: MercInfo }) {
+export function MercPanel({ docId, pane, ch, cell, info }: { docId: string; pane: 0 | 1; ch: D2Character; cell: number; info?: MercInfo }) {
+  const items = ch.mercItems;
+  const gear = info?.gear;
+  // gear this kind of mercenary can't use in the game (put there before the app checked, or by another tool)
+  const wrong = items.filter((i) => mercGearProblem(ch, i, i.bodyLoc));
+  const uses = gear && `Uses ${gear.offHand === 'weapon' ? `two ${gear.weaponText}` : gear.weaponText}${gear.offHand === 'shield' ? ' and a shield' : ''}`;
   return (
     <Panel title="Mercenary">
       {info && (
@@ -132,9 +149,15 @@ export function MercPanel({ docId, pane, items, cell, info }: { docId: string; p
           <div className="text-ink-400">
             {[info.role, info.act ? `Act ${info.act} ${info.difficulty}` : ''].filter(Boolean).join(' · ')}
           </div>
+          {uses && <div className="text-ink-500">{uses}</div>}
         </div>
       )}
-      <Slots docId={docId} pane={pane} area="merc" slots={MERC} items={items} cell={cell} gap={6} tipExtra="Mercenary" />
+      <Slots docId={docId} pane={pane} area="merc" slots={mercSlots(info, items)} items={items} cell={cell} gap={6} tipExtra="Mercenary" />
+      {wrong.length > 0 && (
+        <p className="mx-auto mt-2 max-w-[15rem] text-center text-[11px] leading-snug text-amber-300">
+          {wrong.map(itemName).join(', ')} can&rsquo;t be used by this mercenary in the game. Take {wrong.length === 1 ? 'it' : 'them'} off before you play.
+        </p>
+      )}
     </Panel>
   );
 }

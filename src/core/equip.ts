@@ -2,6 +2,7 @@ import type { D2Character } from './d2s';
 import { requiredLevelOf } from './describe';
 import { GD } from './gamedata';
 import { ItemMode, StorePage, type D2Item } from './item';
+import { mercGear } from './merc';
 
 /** Character class ids (charstats order) -> the class codes used in itemtypes.txt. */
 export const CLASS_CODES = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass', 'war'];
@@ -101,6 +102,31 @@ function handsCheck(item: D2Item, other: D2Item | undefined, classId: number | u
   return undefined;
 }
 
+const MERC_NAME: Record<string, string> = { 'Rogue Scout': 'Rogue', 'Desert Mercenary': 'Desert Mercenary', 'Eastern Sorceror': 'Iron Wolf', Barbarian: 'Barbarian mercenary' };
+
+/**
+ * Why this kind of mercenary can't use the item in that slot (its weapon types, hands and class items), or
+ * undefined when it can. Mercenaries of an unknown kind aren't checked here.
+ */
+export function mercGearProblem(ch: Pick<D2Character, 'merc'>, item: D2Item, bodyLoc: number): string | undefined {
+  const gear = mercGear(ch);
+  if (!gear || !item.def) return undefined;
+  const who = MERC_NAME[GD.mercs[ch.merc!.type]?.cls] ?? 'mercenary';
+  const A = /^[aeiou]/i.test(who) ? 'An' : 'A';
+  const cls = itemClass(item);
+  if (cls && cls !== gear.cls) return `${item.def.name} is ${CLASS_LABEL[cls] ?? cls} only.`;
+  if (bodyLoc !== 4 && bodyLoc !== 5) return undefined;
+  const kind = handKind(item);
+  if (kind === 'quiver') return "Mercenaries don't use arrows or bolts.";
+  if (kind === 'shield') {
+    if (gear.offHand !== 'shield') return `${A} ${who} doesn't use a shield.`;
+    return bodyLoc === 5 ? undefined : 'The shield goes in the shield slot.';
+  }
+  if (!gear.weapons.some((t) => itemIs(item, t)) || (gear.oneHanded && item.def.twoHanded)) return `${A} ${who} only uses ${gear.weaponText}.`;
+  if (bodyLoc === 5 && gear.offHand !== 'weapon') return gear.offHand === 'shield' ? 'That slot is for a shield.' : `${A} ${who} holds one weapon.`;
+  return undefined;
+}
+
 export function beltCapacity(belt: D2Item | undefined): number {
   return belt?.def?.beltBoxes ?? 4;
 }
@@ -121,11 +147,17 @@ export function canEquip(ch: D2Character, item: D2Item, bodyLoc: number, opts: {
   const occupant = list.find((i) => i.bodyLoc === bodyLoc && i !== opts.ignore);
   if (occupant) return { ok: false, reason: 'That slot is taken. Move the equipped item off first.' };
 
+  // a mercenary of a known kind: its own weapon types, hands and class items
+  const known = merc && !!mercGear(ch);
+  if (known) {
+    const why = mercGearProblem(ch, item, bodyLoc);
+    if (why) return { ok: false, reason: why };
+  }
   const cls = itemClass(item);
-  if (cls && (merc || CLASS_CODES[ch.classId] !== cls)) return { ok: false, reason: `${item.def.name} is ${CLASS_LABEL[cls] ?? cls} only.` };
+  if (cls && !known && (merc || CLASS_CODES[ch.classId] !== cls)) return { ok: false, reason: `${item.def.name} is ${CLASS_LABEL[cls] ?? cls} only.` };
 
   const p = partner(bodyLoc);
-  if (p !== undefined) {
+  if (p !== undefined && !known) {
     const other = list.find((i) => i.bodyLoc === p && i !== opts.ignore);
     const why = handsCheck(item, other, merc ? undefined : ch.classId, merc);
     if (why) return { ok: false, reason: why };

@@ -175,6 +175,43 @@ describe('descriptions', () => {
 });
 
 describe('mercenary', () => {
+  test('each kind of mercenary only takes the gear it can use in the game', async () => {
+    const { canEquip, createBaseItem, mercGear, mercGearProblem } = await import('../src/core');
+    const ch = parseCharacter(load('ChaosSC.d2s'));
+    ch.mercItems = [];
+    const it = (code: string) => createBaseItem(code);
+    const can = (type: number, code: string, loc: number) => {
+      ch.merc!.type = type;
+      return canEquip(ch, it(code), loc, { merc: true });
+    };
+    const ok = (type: number, code: string, loc = 4) => expect(can(type, code, loc), `${type} ${code} ${loc}`).toMatchObject({ ok: true });
+    const no = (type: number, code: string, loc: number, why: RegExp) => expect(can(type, code, loc).reason ?? 'allowed', `${type} ${code} ${loc}`).toMatch(why);
+    // codes: sbw Short Bow, am1 Stag Bow (Amazon), lxb Light Crossbow, spr Spear, 7s8 Thresher, jav Javelin, am5 Maiden Javelin,
+    // ssd Short Sword, 2hs Two-Handed Sword, buc Buckler, pa1 Targe (Paladin), cap Cap, ba1 Jawbone Cap (Barbarian), dr1 Wolf Head
+    // Act 1 Rogue: bows, Amazon bows too; nothing in the other hand
+    ok(0, 'sbw'), ok(0, 'am1'), ok(0, 'cap', 1);
+    no(0, 'lxb', 4, /A Rogue only uses bows/), no(0, 'ssd', 4, /only uses bows/), no(0, 'buc', 5, /A Rogue doesn't use a shield/), no(0, 'ba1', 1, /Barbarian only/);
+    // Act 2 Desert Mercenary: spears, polearms and javelins (not the Amazon's)
+    ok(10, 'spr'), ok(10, '7s8'), ok(10, 'jav');
+    no(10, 'am5', 4, /Amazon only/), no(10, 'ssd', 4, /A Desert Mercenary only uses spears, polearms and javelins/), no(10, 'buc', 5, /doesn't use a shield/), no(10, '7s8', 5, /holds one weapon/);
+    // Act 3 Iron Wolf: a one-handed sword and a shield
+    ok(16, 'ssd'), ok(16, 'buc', 5);
+    no(16, '2hs', 4, /An Iron Wolf only uses one-handed swords/), no(16, 'pa1', 5, /Paladin only/), no(16, 'ssd', 5, /slot is for a shield/), no(16, 'buc', 4, /shield slot/), no(16, 'spr', 4, /one-handed swords/);
+    // Act 5 Barbarian (Bash): one sword of either kind, Barbarian helms, no shield and no second weapon
+    ok(24, 'ssd'), ok(24, '2hs'), ok(24, 'ba1', 1);
+    no(24, '7s8', 4, /A Barbarian mercenary only uses swords/), no(24, 'buc', 5, /doesn't use a shield/), no(24, 'ssd', 5, /holds one weapon/), no(24, 'dr1', 1, /Druid only/);
+    // Act 5 Barbarian (Frenzy): two one-handed swords
+    ok(36, 'ssd'), ok(36, 'ssd', 5), ok(36, 'ba1', 1);
+    no(36, '2hs', 4, /only uses one-handed swords/), no(36, '7s8', 5, /one-handed swords/), no(36, 'buc', 5, /doesn't use a shield/);
+    expect([0, 10, 16, 24, 36].map((t) => mercGear({ merc: { ...ch.merc!, type: t } })!.offHand)).toEqual(['none', 'none', 'shield', 'none', 'weapon']);
+    // what's already on a mercenary and can't be used is found too (a polearm on a Barbarian)
+    ch.merc!.type = 36;
+    expect(mercGearProblem(ch, it('7s8'), 4)).toMatch(/only uses one-handed swords/);
+    expect(mercGearProblem(ch, it('ssd'), 5)).toBeUndefined();
+    // a kind the tables don't have: the general rules, as before
+    ok(999, 'buc', 5), no(999, 'ba1', 1, /Barbarian only/);
+  });
+
   test('level follows hireling.txt experience (Exp/Lvl × L² × (L+1))', async () => {
     const { mercLevel, mercExpFor } = await import('../src/core');
     expect(mercLevel(110, 0)).toBe(1);

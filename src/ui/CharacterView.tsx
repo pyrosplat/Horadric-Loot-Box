@@ -77,7 +77,7 @@ export function CharacterView({ docId, ch, pane, matches }: { docId: string; ch:
         <div className="space-y-3">
           <BeltPanel docId={docId} pane={pane} items={characterBelt(ch)} belt={characterEquipped(ch).find((i) => i.bodyLoc === 8)} cell={cell} />
           <Panel title="Horadric Cube">{grid('cube')}</Panel>
-          {(ch.mercSplit || ch.mercItems.length > 0) && <MercPanel docId={docId} pane={pane} items={ch.mercItems} cell={cell} info={mercInfo(ch)} />}
+          {(ch.mercSplit || ch.mercItems.length > 0) && <MercPanel docId={docId} pane={pane} ch={ch} cell={cell} info={mercInfo(ch)} />}
         </div>
         {threeCols && stash}
         {ch.corpseItems.length > 0 && <ReadOnlyList title="Corpse" items={ch.corpseItems} label={() => ''} />}
