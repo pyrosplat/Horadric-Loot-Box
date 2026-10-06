@@ -395,16 +395,22 @@ describe('runes and ethereal in collections', () => {
   });
 
   test('ethereal copies get their own slot only for items that can be ethereal', async () => {
-    const { canBeEthereal, catalog, slots, Quality } = await import('../src/core');
+    const { canBeEthereal, canBeNonEthereal, catalog, slots, Quality } = await import('../src/core');
     const byName = (n: string) => catalog('unique').find((e) => e.name === n)!;
     expect(canBeEthereal('unique', byName('Harlequin Crest'))).toBe(true);
+    expect(canBeEthereal('unique', byName('Crown of Ages'))).toBe(false);
+    expect(canBeEthereal('unique', byName('Ethereal Edge'))).toBe(true);
+    expect(canBeNonEthereal('unique', byName('Harlequin Crest'))).toBe(true);
+    expect(canBeNonEthereal('unique', byName('Ethereal Edge'))).toBe(false);
+    expect(canBeNonEthereal('unique', byName('Crown of Ages'))).toBe(true);
     expect(canBeEthereal('unique', byName('The Stone of Jordan'))).toBe(false);
     expect(canBeEthereal('unique', byName('Annihilus'))).toBe(false);
     expect(canBeEthereal('rune', catalog('rune')[0])).toBe(false);
     const plain = slots('unique', false).length;
     const split = slots('unique', true).length;
+    const extra = catalog('unique').filter((e) => !e.legacy && canBeEthereal('unique', e) && canBeNonEthereal('unique', e)).length;
     expect(split).toBeGreaterThan(plain);
-    expect(split - plain).toBe(catalog('unique').filter((e) => !e.legacy && canBeEthereal('unique', e)).length);
+    expect(split - plain).toBe(extra);
     const found = chaos().items.find((i) => i.quality === Quality.Unique && i.def && (i.def.kind === 'armor' || i.def.kind === 'weapon'))!;
     const u = { ...found, ethereal: false };
     const eth = { ...found, ethereal: true };
@@ -464,7 +470,7 @@ describe('grail totals follow the game Chronicle', () => {
   test('counts leave out legacy, duplicate and unobtainable rows', async () => {
     const { progress, slots, catalog } = await import('../src/core');
     const none = new Map();
-    expect(progress('unique', false, none).total).toBe(409);
+    expect(progress('unique', false, none).total).toBe(403);
     expect(progress('set', false, none).total).toBe(135);
     expect(progress('runeword', false, none).total).toBe(99);
     expect(progress('rune', false, none).total).toBe(33);
@@ -477,7 +483,7 @@ describe('grail totals follow the game Chronicle', () => {
     const have = new Map([[String(ring.id), [{} as never]]]);
     expect(slots('unique', false, have).some((s) => s.entry.id === ring.id)).toBe(true);
     expect(slots('unique', false).some((s) => s.entry.id === ring.id)).toBe(false);
-    expect(progress('unique', false, have)).toEqual({ found: 0, total: 409 });
+    expect(progress('unique', false, have)).toEqual({ found: 0, total: 403 });
   });
 });
 
