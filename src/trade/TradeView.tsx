@@ -218,7 +218,9 @@ export function TradeView() {
           <span className={`text-[12px] ${matched >= 0 ? 'text-emerald-300' : 'text-ink-400'}`}>
             {!wanting || !ask
               ? 'Import a listing to start a trade.'
-              : matched >= 0
+              : ask[0]?.length === 0 && !selling
+                ? 'This listing is free: nothing to pay. Just accept.'
+                : matched >= 0
                 ? selling
                   ? 'Your offer is what the buyer wants.'
                   : 'Your offer is what the listing asks for.'

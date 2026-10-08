@@ -1032,6 +1032,14 @@ function readAffixListing(title: string | undefined, lines: string[], titled: bo
 
 /** Where the price starts: "Trading For" on a normal listing, "I Give" or "Offering" when someone is buying. */
 const PRICE_HEADING = /^(trading for|i give|offering)\b/;
+/** A free listing has no "Trading For" row: the price line just says "Free". */
+const FREE_LINE = /^fr[e3]{2}$/;
+
+/** Where the price starts: the "Trading For" row, or the lone "Free" line. -1 when neither is there. */
+const priceCut = (all: string[]): number => {
+  const i = all.findIndex((l) => PRICE_HEADING.test(norm(l)));
+  return i >= 0 ? i : all.findIndex((l) => FREE_LINE.test(norm(l).replace(/[^a-z0-9]/g, '')));
+};
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -1214,7 +1222,7 @@ export function titleWant(it: ListingItem): AskItem[] | string {
 export const canReceive = (opt: AskItem[]) => opt.every((a) => !a.item || a.item.kind !== 'runeword');
 
 /** "1× Ist Rune", "1× Lo Rune or 1× Ohm Rune" */
-export const askText = (options: AskItem[][]) => options.map((o) => o.map((a) => `${a.qty}× ${a.name}`).join(' + ')).join(' or ');
+export const askText = (options: AskItem[][]) => options.map((o) => (o.length ? o.map((a) => `${a.qty}× ${a.name}`).join(' + ') : 'Free')).join(' or ');
 
 /**
  * Reads a listing's text lines (from OCR) into tags, an item, its price and any problems. `price` is a second
@@ -1223,9 +1231,12 @@ export const askText = (options: AskItem[][]) => options.map((o) => o.map((a) =>
 export function readListing(rawLines: string[], price?: string[], now: Date = new Date()): ListingResult {
   const r = readListingItem(rawLines, now);
   const all = rawLines.map((l) => l.trim()).filter(Boolean);
-  const cut = all.findIndex((l) => PRICE_HEADING.test(norm(l)));
+  const cut = priceCut(all);
   // "I Give" / "Offering": someone buying the listed item
-  const direction = cut >= 0 && !/^trading for\b/.test(norm(all[cut])) ? 'sell' : 'buy';
+  const free = cut >= 0 && FREE_LINE.test(norm(all[cut]).replace(/[^a-z0-9]/g, ''));
+  const direction = cut >= 0 && !free && !/^trading for\b/.test(norm(all[cut])) ? 'sell' : 'buy';
+  // "Free": nothing to pay, so the one option asks for nothing
+  if (free) return { ...r, direction, ask: [[]] };
   // no "Trading For": a "Make an Offer" listing, or a price that wasn't in the screenshot
   const tail = cut >= 0 ? all.slice(cut + 1).filter((l) => !/rune value|^in \d|\bago\b|^in\d/.test(norm(l))) : all.filter((l) => /make an? offer/.test(norm(l)));
   const reads = [price ?? [], tail].map(readAsk);
@@ -1260,7 +1271,7 @@ function readListingItem(rawLines: string[], now: Date): Omit<ListingResult, 'di
   // a line with no letter or number is a picture read as marks (the pin or infinity sign after a title: "»", "°°")
   const all = rawLines.map((l) => l.trim()).filter((l) => /[a-z0-9]/i.test(l));
   // "Trading For" starts the price; the seller, "High Rune Value" and the time follow. None of it is the item.
-  const cut = all.findIndex((l) => PRICE_HEADING.test(norm(l)));
+  const cut = priceCut(all);
   const age = readAge(all, now);
   const itemLines = cut >= 0 ? all.slice(0, cut) : all;
   // the title: "1 X Demonhead" (the number is how many)

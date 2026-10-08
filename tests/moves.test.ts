@@ -632,6 +632,16 @@ describe('trade (optional feature)', () => {
     expect(() => createCompactItem('r24', 99)).toThrow();
   });
 
+  test('a free listing is accepted with an empty offer, and takes its mode from the listing', async () => {
+    const { TRADE_ID } = await import('../src/state/store');
+    store.settings.tradeEnabled = true;
+    store.panes = [{ docId: sid, tab: 0 }, { docId: TRADE_ID, tab: 0 }];
+    expect(store.tradeSetListing({ name: 'Ist Rune', mode: 'softcore', ask: [[]], want: [['r24', 1]] })).toBeUndefined();
+    expect(store.tradeAskMatch()).toBe(0);
+    expect(store.tradeAccept()).toBe(true);
+    expect(store.tradeReceived.map((i) => i.code)).toEqual(['r24']);
+  });
+
   test('paying with Um from the Stackables tab for an Ist', async () => {
     const { TRADE_ID } = await import('../src/state/store');
     store.settings.tradeEnabled = true;

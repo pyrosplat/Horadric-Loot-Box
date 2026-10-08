@@ -501,3 +501,24 @@ describe('the price: what the listing is trading for', () => {
     expect(r.errors[0]).toMatch(/asks for offers/);
   });
 });
+
+describe('free listings', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const file = (f: string) => fs.readFileSync(path.join(__dirname, 'fixtures', 'listings', f), 'utf8').split('\n');
+  const read = (f: string) => readListing(file(`${f}.txt`), file(`${f}.price.txt`));
+
+  test.each(['free-wizendraw', 'free-renewed-flame-rift', 'free-paper-large-charm'])('%s: "Free" is a price of nothing, with no error about the price', (f) => {
+    const r = read(f);
+    expect(r.ask).toEqual([[]]);
+    expect(r.direction).toBe('buy');
+    expect(r.errors.filter((e) => /trading for|offering/i.test(e))).toEqual([]);
+    expect(askText(r.ask!)).toBe('Free');
+  });
+
+  test('the Free line is not read as part of the item', () => {
+    const r = read('free-wizendraw');
+    expect(r.item && 'id' in r.item ? GD.uniques[r.item.id]?.name ?? '' : '').toMatch(/wizendraw/i);
+  });
+});
+

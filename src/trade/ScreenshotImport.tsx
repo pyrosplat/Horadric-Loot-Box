@@ -82,6 +82,7 @@ export function AskLine({ ask, matched, label = 'Trading for:', picked, onPick }
         const cls = `flex items-center gap-1.5 rounded border px-1.5 py-0.5 ${on ? 'border-emerald-600 bg-emerald-950/40 text-emerald-200' : 'border-ink-700'} ${onPick ? 'cursor-pointer hover:border-ink-400' : ''}`;
         const body = (
           <>
+            {!opt.length && <span>Free</span>}
             {opt.map((a, k) => {
               const img = thumbOf(a);
               return (
@@ -185,7 +186,7 @@ export function ScreenshotImport() {
     const replacing = store.trade.listing;
     const problem = store.tradeSetListing({ name: it.name, mode: state.result.tags.mode, ask: state.result.ask, want, items });
     if (problem) return store.toast('error', problem);
-    store.toast('success', `${replacing ? `Replaced ${replacing} with` : 'Added'} ${it.name}. Now drag ${askText(state.result.ask)} into your offer.`);
+    store.toast('success', `${replacing ? `Replaced ${replacing} with` : 'Added'} ${it.name}. ${state.result.ask.some((o) => !o.length) ? 'It is free: just accept the trade.' : `Now drag ${askText(state.result.ask)} into your offer.`}`);
     setState({ status: 'idle' });
   };
 

@@ -63,6 +63,7 @@ import type { Platform, SaveFileEntry, UpdateInfo } from '../platform';
 import { ArtIndex } from '../art';
 import type { Held } from '../core';
 import { loadTradeLog, storeTradeLog, tradeLines, type TradeLogEntry } from './tradeLog';
+import { askText } from '../trade/listing';
 
 export type AnyDoc = D2Character | D2SharedStash | Vault;
 
@@ -1120,17 +1121,18 @@ export class Store {
     const selling = !!receive;
     if (!ask || (!selling && !want.size && !items.length)) return fail('Import a listing first.');
     if (this.tradeAskMatch() < 0) {
-      const text = ask.map((o) => o.map((a) => `${a.qty}× ${a.name}`).join(' + ')).join(' or ');
+      const text = askText(ask);
       return fail(selling ? `Offer exactly what the buyer wants: ${text}.` : `Offer exactly what the listing asks for: ${text}.`);
     }
     // the payment is what's in the offer box: all Reign of the Warlock, all softcore or all hardcore
     const paid = (this.tradeOfferBox.doc as Vault).entries;
-    if (!paid.length) return fail('Drag what you pay with into your offer first.');
+    const free = !paid.length && !selling && ask[0]?.length === 0;
+    if (!paid.length && !free) return fail('Drag what you pay with into your offer first.');
     if (paid.some((p) => p.realm !== 'rotw')) return fail('Only Reign of the Warlock items can be traded.');
     const hcs = new Set(paid.map((p) => !!p.hardcore));
     if (hcs.size > 1) return fail('Your offer mixes softcore and hardcore items. Softcore and hardcore never mix.');
-    const hardcore = [...hcs][0] ?? false;
-    if (this.trade.mode && (this.trade.mode === 'hardcore') !== hardcore)
+    const hardcore = free ? this.trade.mode === 'hardcore' : [...hcs][0] ?? false;
+    if (!free && this.trade.mode && (this.trade.mode === 'hardcore') !== hardcore)
       return fail(`The listing you imported is ${this.trade.mode}, but you're paying from a ${hardcore ? 'hardcore' : 'softcore'} file. Softcore and hardcore never mix.`);
     const logId = newUid();
     this.snapshot('trade', [TRADE_OFFER_ID, TRADE_ID], () => (this.tradeLog = this.tradeLog.filter((x) => x.id !== logId)));
