@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.0
+
+- Free listings: Traderie items that need nothing to trade can be imported and accepted with an empty offer. The trade history shows "Free".
+- Fixed: a posted time clipped by the screenshot reader ("4 hours ag") no longer fails the import.
+
 ## 2.4.2
 
 - Stackables are one tab again: runes, gems and materials on a single page.

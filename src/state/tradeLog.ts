@@ -42,7 +42,8 @@ export function tradeLines(items: D2Item[]): TradeLogLine[] {
 }
 
 /** "2× Ist Rune, Harlequin Crest" */
-export const tradeLineText = (lines: TradeLogLine[]) => lines.map((l) => (l.qty > 1 ? `${l.qty}× ${l.name}` : l.name)).join(', ');
+/** "2× Ist Rune, Ber Rune"; a free trade paid nothing, so it reads "Free". */
+export const tradeLineText = (lines: TradeLogLine[]) => !lines.length ? 'Free' : lines.map((l) => (l.qty > 1 ? `${l.qty}× ${l.name}` : l.name)).join(', ');
 
 /** The saved log, newest first (empty if there is none or storage is unavailable). */
 export function loadTradeLog(): TradeLogEntry[] {

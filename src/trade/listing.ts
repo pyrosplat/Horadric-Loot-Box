@@ -1073,7 +1073,7 @@ export function readAge(lines: string[], now: Date = new Date()): number | undef
     // (a stray letter OCR adds after the number is ignored: "5s hours ago")
     const m = /\b(a|an|\d{1,3})(?: [a-z])? (second|sec|minute|min|hour|hr|day|week|month|year)s?\b/.exec(l);
     // "in 50 seconds", "3 hours ago", or just "42 seconds" (a clipped "in")
-    if (m && (/\bago\b|^in\b|\bin \d|\bin an?\b/.test(l) || l === m[0] || new RegExp(`^[a-z]{1,2} ${m[0]}$`).test(l))) found = (m[1] === 'a' || m[1] === 'an' ? 1 : Number(m[1])) * unit[m[2]];
+    if (m && (/\bago?\b|^(a|ag)?$/.test(l.slice(m.index + m[0].length).trim()) || /^in\b|\bin \d|\bin an?\b/.test(l) || l === m[0] || new RegExp(`^[a-z]{1,2} ${m[0]}$`).test(l))) found = (m[1] === 'a' || m[1] === 'an' ? 1 : Number(m[1])) * unit[m[2]];
     else if (/\bjust now\b/.test(l)) found = 0;
     else {
       const d = dateAge(l, now);

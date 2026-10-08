@@ -640,6 +640,9 @@ describe('trade (optional feature)', () => {
     expect(store.tradeAskMatch()).toBe(0);
     expect(store.tradeAccept()).toBe(true);
     expect(store.tradeReceived.map((i) => i.code)).toEqual(['r24']);
+    // the history says Free, not a blank
+    const { tradeLineText } = await import('../src/state/tradeLog');
+    expect(tradeLineText(store.tradeLog[0].paid)).toBe('Free');
   });
 
   test('paying with Um from the Stackables tab for an Ist', async () => {

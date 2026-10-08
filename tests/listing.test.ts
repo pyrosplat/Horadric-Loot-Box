@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { GD, affixRows, buildableTemplates, createAffixItem, createRunewordItem, createBaseItem, createTemplateItem, describeItem, pickRolls, rollSlots, type Rolls } from '../src/core';
-import { askText, readAsk, readListing, readTags, tagErrors, type ListingItem } from '../src/trade/listing';
+import { askText, readAge, readAsk, readListing, readTags, tagErrors, type ListingItem } from '../src/trade/listing';
 import { columnLines } from '../src/trade/ocr';
 
 type AffixListing = Extract<ListingItem, { affixes: unknown }>;
@@ -516,9 +516,21 @@ describe('free listings', () => {
     expect(askText(r.ask!)).toBe('Free');
   });
 
+  test('"4 hours ag" (a clipped "ago") still gives the posted time, and the Renewed charm reads without a posted-time error', () => {
+    const r = read('free-renewed-flame-rift');
+    expect(r.age).toBe(4 * 3600);
+    expect(r.errors.filter((e) => /posted/i.test(e))).toEqual([]);
+  });
+
   test('the Free line is not read as part of the item', () => {
     const r = read('free-wizendraw');
     expect(r.item && 'id' in r.item ? GD.uniques[r.item.id]?.name ?? '' : '').toMatch(/wizendraw/i);
   });
 });
 
+
+describe('posted time clipped by OCR', () => {
+  test.each(['14 hours ago', '14 hours ag', '14 hours a', '14 hours', '1 hour ag'])('"%s" reads', (t) => {
+    expect(readAge([t])).toBe(Number(t.split(' ')[0]) * 3600);
+  });
+});
