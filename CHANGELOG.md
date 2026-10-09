@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.0
+
+- A look closer to the game: stone panels, tabs, buttons and tooltips, with a Classic theme in Settings to switch back. The stone texture no longer shows a repeat.
+- Every pane has a red close box. Close one side and the other stays the same size; an "Open panel" box in the empty side lets you pick what goes there, and opening a stash or character from the list fills the empty side.
+- Characters: a Stats button opens a character screen like the game's, with attributes, defense, life, mana, stamina, resistances for Normal, Nightmare or Hell (with Anya's resistance scrolls) and an Advanced Stats list (faster cast, hit recovery and run, magic find, leech and more). It follows your gear as you move it, and you can drag it around.
+- Four-socket items on tall bases (such as polearms) show their sockets in one column.
+
 ## 2.5.1
 
 - The panels you had open come back after closing and relaunching the app, with the same files and tabs, for each save folder.

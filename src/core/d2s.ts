@@ -32,6 +32,8 @@ export interface D2Character {
   hasMerc: boolean;
   /** The mercenary as stored in the header (type is the hireling.txt Id; see core/merc.ts). */
   merc?: { type: number; nameId: number; exp: number; dead: boolean };
+  /** Per difficulty (Normal, Nightmare, Hell): whether Prison of Ice is done and its reward given (+10 to all resistances each). */
+  anyaScrolls?: [boolean, boolean, boolean];
   /** Bytes before the player item list (header, quests, waypoints, stats, skills). */
   head: Uint8Array;
   /** Bytes after the player item list (corpse, merc, golem, demon, trailing data). */
@@ -127,8 +129,13 @@ export function parseCharacter(data: Uint8Array, fileName?: string): D2Character
   const items = readItemList(ir, count, version);
   const itemsEnd = ir.bytePos;
 
+  // quest section: 'Woo!' + 6 bytes, then 96 bytes per difficulty; Prison of Ice is word 37, bit 0 = completed with the reward (Anya's scroll) given
+  const questWord = (d: number) => u16(data, c + charSize + 10 + d * 96 + 37 * 2);
+  const anyaScrolls: [boolean, boolean, boolean] = [0, 1, 2].map((d) => (questWord(d) & 1) !== 0) as [boolean, boolean, boolean];
+
   const ch: D2Character = {
     kind: 'character',
+    anyaScrolls,
     version,
     fileName,
     name,

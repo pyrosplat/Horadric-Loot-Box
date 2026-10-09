@@ -206,7 +206,7 @@ function Row({ d, sub, extra }: { d: LoadedDoc; sub: string; extra?: React.React
       }}
       className={`group flex cursor-grab items-center gap-1 rounded px-2 py-1.5 active:cursor-grabbing ${dragging ? 'opacity-50' : ''} ${inLeft || inRight ? 'bg-ink-800' : 'hover:bg-ink-850'}`}
     >
-      <button className="min-w-0 flex-1 text-left" onClick={() => store.showInPane(defaultPane, d.id)} title={d.error ?? `${d.path}\nDrag onto the left or right side to open it there`}>
+      <button className="min-w-0 flex-1 text-left" onClick={() => store.openDoc(d.id, defaultPane)} title={d.error ?? `${d.path}\nDrag onto the left or right side to open it there`}>
         <div className={`truncate text-[13px] ${d.error ? 'text-red-300' : 'text-ink-200'}`}>
           {docLabel(d.doc, d.name)}
           {d.dirty && <span className="ml-1 text-gold-400" title="Unsaved changes">•</span>}

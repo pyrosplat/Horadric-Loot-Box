@@ -108,9 +108,14 @@ export interface Toast {
 export interface PaneState {
   docId?: string;
   tab: number;
+  /** Closed with its red box: the pane is hidden and the other side takes the whole width. */
+  closed?: boolean;
 }
 
 export type ItemView = 'art' | 'artNames' | 'tiles';
+
+/** The look of the app: the game's stone frames, or the plain dark panels it had before. */
+export type Theme = 'stone' | 'classic';
 
 export interface Settings {
   /** Blocks every move and save, for browsing without risk. */
@@ -123,6 +128,8 @@ export interface Settings {
   grailEth: boolean;
   /** Interface scale (1 = 100%). */
   uiScale: number;
+  /** Stone frames like the game (default) or the plain dark look. */
+  theme?: Theme;
   /** Shared stash pages: one Shared tab with a page switcher (like the game), or a tab per page. */
   sharedStash?: 'pages' | 'tabs';
   /** Collections count runes and jewels socketed into items ("made" runes). */
@@ -243,6 +250,11 @@ export class Store {
     this.platform = platform;
     this.options = options;
     this.settings = { ...this.settings, ...options.defaults, ...savedSettings() };
+    this.applyTheme();
+  }
+
+  private applyTheme() {
+    if (typeof document !== 'undefined') document.documentElement.dataset.theme = this.settings.theme ?? 'stone';
   }
 
   subscribe = (fn: () => void) => {
@@ -313,6 +325,7 @@ export class Store {
 
   setSettings(s: Partial<Settings>) {
     this.settings = { ...this.settings, ...s };
+    this.applyTheme();
     try {
       localStorage.setItem('hlb-settings', JSON.stringify(this.settings));
     } catch {
@@ -441,7 +454,7 @@ export class Store {
 
   private rememberPanes() {
     if (this.platform.id !== 'tauri' || !this.folder || this.busy) return;
-    const now = JSON.stringify(this.panes.map((p) => ({ id: p.docId && (p.docId === TRADE_ID || this.docs.get(p.docId)?.path) ? p.docId : undefined, tab: p.tab })));
+    const now = JSON.stringify(this.panes.map((p) => ({ id: p.docId && (p.docId === TRADE_ID || this.docs.get(p.docId)?.path) ? p.docId : undefined, tab: p.tab, closed: p.closed || undefined })));
     if (now === this.panesSaved) return;
     this.panesSaved = now;
     try {
@@ -455,10 +468,10 @@ export class Store {
   private restorePanes() {
     if (this.platform.id !== 'tauri' || !this.folder) return;
     try {
-      const saved = JSON.parse(localStorage.getItem(this.panesKey()) ?? 'null') as { id?: string; tab: number }[] | null;
+      const saved = JSON.parse(localStorage.getItem(this.panesKey()) ?? 'null') as { id?: string; tab: number; closed?: boolean }[] | null;
       if (!Array.isArray(saved) || saved.length !== 2) return;
       const ok = (id?: string) => !!id && ((id === TRADE_ID && !!this.settings.tradeEnabled) || !!this.docs.get(id)?.doc);
-      this.panes = this.panes.map((p, i) => (ok(saved[i]?.id) ? { docId: saved[i].id, tab: Number.isInteger(saved[i].tab) && saved[i].tab >= 0 ? saved[i].tab : 0 } : p)) as [PaneState, PaneState];
+      this.panes = this.panes.map((p, i) => (saved[i]?.closed ? { tab: 0, closed: true } : ok(saved[i]?.id) ? { docId: saved[i].id, tab: Number.isInteger(saved[i].tab) && saved[i].tab >= 0 ? saved[i].tab : 0 } : p)) as [PaneState, PaneState];
     } catch {
       /* keep the default panes */
     }
@@ -547,6 +560,22 @@ export class Store {
     const stackTab = d.tabs.findIndex((t) => t.type === StashTabType.Advanced);
     this.panes = [{ docId: pick, tab: stackTab >= 0 ? stackTab : 0 }, { docId: TRADE_ID, tab: 0 }];
     this.emit();
+  }
+
+  /** Closes a side (the red box): it disappears and the other side fills the window. */
+  closePane(pane: 0 | 1) {
+    this.panes = pane === 0 ? [{ tab: 0, closed: true }, this.panes[1]] : [this.panes[0], { tab: 0, closed: true }];
+    this.emit();
+  }
+
+  /**
+   * Opens a file from the list: in the side that's closed or empty if there is one, otherwise in `preferred`
+   * (characters go right, everything else left).
+   */
+  openDoc(docId: string, preferred: 0 | 1, tab = 0) {
+    const free = [0, 1].filter((i) => this.panes[i].closed || !this.panes[i].docId) as (0 | 1)[];
+    const pane = free.includes(preferred) ? preferred : free[0] ?? preferred;
+    this.showInPane(pane, docId, tab);
   }
 
   /** Swaps what the left and right panes show. */

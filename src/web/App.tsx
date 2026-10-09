@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { GD, type D2Character, type D2SharedStash } from '../core';
 import { DEMO_FILES } from '../platform/demo';
 import { createDroppedPlatform } from '../platform/dropped';
-import { ArtSettings, ConfirmItemDelete, Credit, HeaderBtn, Hint, ScaleSetting, Section, SharedStashSetting, Toasts } from '../ui/App';
+import { ArtSettings, ConfirmItemDelete, Credit, HeaderBtn, Hint, ScaleSetting, Section, SharedStashSetting, ThemeSetting, Toasts } from '../ui/App';
 import { CharacterView } from '../ui/CharacterView';
 import { StoreContext, useStore } from '../ui/context';
 import { UI_SCALE_MAX, UI_SCALE_MIN, applyUiScale, defaultUiScale } from '../ui/scale';
@@ -305,6 +305,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             </span>
           </label>
           <ScaleSetting />
+          <ThemeSetting />
           <SharedStashSetting />
         </Section>
         <ArtSettings />

@@ -623,6 +623,52 @@ describe('remembering the save folder', () => {
   });
 });
 
+describe('closing a side', () => {
+  test('a closed side hides; the next file opened takes its place; both closed is fine', async () => {
+    const s = new Store(fakePlatform());
+    s.toast = () => {};
+    await s.openFolder('t/');
+    const [a, b] = [s.panes[0].docId!, s.panes[1].docId!];
+    s.closePane(1);
+    expect(s.panes[1]).toEqual({ tab: 0, closed: true });
+    expect(s.panes[0].docId).toBe(a);
+    // a character normally opens on the right, and the right is the free side
+    s.openDoc(b, 1);
+    expect(s.panes[1]).toEqual({ docId: b, tab: 0 });
+    // close the left: a vault (which prefers the left) still goes to the free side
+    s.closePane(0);
+    s.closePane(1);
+    expect(s.panes.every((p) => p.closed)).toBe(true);
+    s.openDoc(a, 1);
+    expect(s.panes[1].docId).toBe(a);
+    expect(s.panes[0].closed).toBe(true);
+    // with both sides in use, the preferred side is replaced
+    s.openDoc(b, 0);
+    expect([s.panes[0].docId, s.panes[1].docId]).toEqual([b, a]);
+  });
+
+  test('the closed side is remembered at the next launch', async () => {
+    const mem = new Map<string, string>();
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const old = g.localStorage;
+    g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
+    try {
+      const p = { ...fakePlatform(), id: 'tauri' as const };
+      const a = new Store(p);
+      a.toast = () => {};
+      await a.openFolder('t/');
+      a.closePane(0);
+      const b = new Store(p);
+      b.toast = () => {};
+      await b.openFolder('t/');
+      expect(b.panes[0]).toEqual({ tab: 0, closed: true });
+      expect(b.panes[1].docId).toBeTruthy();
+    } finally {
+      g.localStorage = old;
+    }
+  });
+});
+
 describe('remembering the open panes', () => {
   test('the desktop app puts each pane back on its file and tab at the next launch', async () => {
     const mem = new Map<string, string>();
@@ -1286,5 +1332,33 @@ describe('selling to buyers, and paying with items', () => {
     const it = await stashItem(createTemplateItem('unique', shako));
     store.tradeSetListing({ name: 'Ist', mode: 'softcore', ask: [[{ code: 'r22', qty: 1, name: 'Um Rune' }]], want: [['r24', 1]] });
     expect(store.check(it, sid, { docId: TRADE_OFFER_ID, area: 'vault' }).reason).toMatch(/doesn’t ask for items/);
+  });
+});
+
+describe('character stats', () => {
+  test('gear totals for a loaded character: attributes, resists capped, speeds with breakpoints', async () => {
+    const { characterStats, parseCharacter, FCR_BREAKPOINTS } = await import('../src/core');
+    const fs = require('node:fs') as typeof import('node:fs');
+    const ch = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/ChaosSC.d2s')), 'ChaosSC.d2s');
+    const s = characterStats(ch);
+    expect(s.strength).toBeGreaterThanOrEqual(ch.stats.strength);
+    expect(s.fire.max).toBeGreaterThanOrEqual(75);
+    expect(s.fire.hell).toBe(Math.min(s.fire.total + 10 * ch.anyaScrolls!.filter(Boolean).length - 100, s.fire.max));
+    expect(s.magicFind).toBeGreaterThanOrEqual(0);
+    // a fresh level 1 character: its starting life and no gear bonuses
+    const barb = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/barbrotw_v105.d2s')), 'barbrotw_v105.d2s');
+    const b = characterStats(barb);
+    expect([b.life, b.mana, b.stamina]).toEqual([55, 10, 92]);
+    expect(b.fcr).toEqual({ value: 0, at: 0, next: FCR_BREAKPOINTS.Barbarian[1] });
+  });
+
+  test('follows gear moves: taking the helm off changes the totals and the advanced list', async () => {
+    const { characterStats } = await import('../src/core');
+    const before = characterStats(chaos());
+    expect(before.advanced.length).toBeGreaterThan(0);
+    expect(store.move(worn(chaos(), 1)!, 't/ChaosSC.d2s', { docId: vaultId(), area: 'vault' })).toBe(true);
+    const after = characterStats(chaos());
+    expect(after.itemCount).toBe(before.itemCount - 1);
+    expect(after.defense).toBeLessThan(before.defense);
   });
 });

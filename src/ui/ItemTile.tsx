@@ -83,7 +83,7 @@ export function ItemTile({ item, docId, cell, draggable, onDoubleClick, onContex
         })
       }
       className={`group absolute select-none overflow-hidden text-center transition
-        ${artBox ? 'rounded-[1px] border bg-[#1d1c1b]' : `flex flex-col items-center justify-center rounded-[3px] border ${QUALITY_BG[d.qualityClass] ?? QUALITY_BG.normal}`}
+        ${artBox ? 'd2-cell rounded-[1px] border bg-[#1d1c1b]' : `flex flex-col items-center justify-center rounded-[3px] border ${QUALITY_BG[d.qualityClass] ?? QUALITY_BG.normal}`}
         ${draggable ? 'cursor-grab active:cursor-grabbing hover:brightness-125' : 'cursor-default hover:brightness-110'}
         ${item.ethereal ? (artBox ? '[&_img]:opacity-60' : 'opacity-80 [background-image:repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,.035)_6px_8px)]') : ''}
         ${selected ? 'z-20 ring-2 ring-sky-400 ring-offset-1 ring-offset-black brightness-125' : highlight ? 'z-10 ring-2 ring-gold-400' : ''} ${dim && !selected ? 'opacity-25' : ''}`}

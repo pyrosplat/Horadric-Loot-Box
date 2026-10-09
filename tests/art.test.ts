@@ -139,6 +139,15 @@ describe('socket placement', () => {
   });
 });
 
+describe('four sockets', () => {
+  test('a 2×4 item (polearm) has them in one column; a 2×3 or 2×2 item keeps the 2×2 block', () => {
+    const tall = socketLayout(4, 2, 4);
+    expect(new Set(tall.map((p) => p.x)).size).toBe(1);
+    expect(tall.map((p) => p.y)).toEqual([...tall.map((p) => p.y)].sort((a, b) => a - b));
+    for (const h of [2, 3]) expect(new Set(socketLayout(4, 2, h).map((p) => p.x)).size).toBe(2);
+  });
+});
+
 describe('belt capacity', () => {
   test('matches belts.txt: sash 8, belt 12, plated and exceptional belts 16, none 4', async () => {
     const { beltSlots } = await import('../src/ui/Equipment');

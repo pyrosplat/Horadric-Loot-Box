@@ -38,6 +38,8 @@ export function socketLayout(n: number, w: number, h: number): { x: number; y: n
     case 3:
       return h >= 3 ? col(3) : [{ x: 0.5, y: 0.27 }, { x: 0.27, y: 0.73 }, { x: 0.73, y: 0.73 }];
     case 4: {
+      // a 2×4 item (polearms, staves, bows) holds its four sockets in one column, like the game
+      if (h >= 4) return col(4);
       const ys = h >= 3 ? [0.3, 0.7] : [0.27, 0.73];
       return ys.flatMap((y) => [{ x: 0.27, y }, { x: 0.73, y }]);
     }

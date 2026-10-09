@@ -97,7 +97,7 @@ export function Grid({ docId, area, tab = 0, cols, rows, items, editable: editab
         </div>
       )}
       <div
-        className={`relative rounded-[3px] border ${editable ? 'border-[#3a3a3a]' : 'border-[#2c2c2c] opacity-90'} bg-[#111]`}
+        className={`d2-slot relative rounded-[3px] border ${editable ? 'border-[#3a3a3a]' : 'border-[#2c2c2c] opacity-90'} bg-[#111]`}
         style={{
           width: cols * cell + 2,
           height: rows * cell + 2,

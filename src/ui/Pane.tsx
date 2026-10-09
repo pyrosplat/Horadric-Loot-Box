@@ -19,6 +19,8 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
   const docs = [...store.docs.values()].filter((d) => d.doc);
   const [docOver, setDocOver] = useState(false);
   const dragged = docDrag.id ? store.docs.get(docDrag.id) : undefined;
+  // a closed side stays an empty space, so the other side keeps its width
+  if (state.closed) return <div className="flex min-w-0 flex-1 items-center justify-center"><OpenPanelBox pane={pane} /></div>;
 
   return (
     <div
@@ -84,6 +86,9 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
             </button>
           )}
         </div>
+        <button className="d2-close" onClick={() => store.closePane(pane)} aria-label={`Close the ${pane === 0 ? 'left' : 'right'} side`} title={`Close the ${pane === 0 ? 'left' : 'right'} side`}>
+          ×
+        </button>
       </div>
       {entry && store.selection.docId === entry.id && store.selection.items.size > 0 && <SelectionBar docId={entry.id} pane={pane} />}
       <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -92,7 +97,7 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
             <TradeView />
           </Suspense>
         ) : !entry ? (
-          <Empty text="Pick a character, stash or vault from the list." />
+          <div className="flex h-full min-h-[300px] items-center justify-center"><OpenPanelBox pane={pane} /></div>
         ) : entry.error ? (
           <div className="rounded border border-red-900 bg-red-950/40 p-4 text-[13px] text-red-200">
             <p className="font-medium">Couldn't read {entry.name}</p>
@@ -139,6 +144,45 @@ function SelectionBar({ docId, pane }: { docId: string; pane: 0 | 1 }) {
       <button className={btn} onClick={() => store.clearSelection()} title="Esc">
         Clear
       </button>
+    </div>
+  );
+}
+
+/** The box in the middle of an empty side: pick what to open there. */
+function OpenPanelBox({ pane }: { pane: 0 | 1 }) {
+  const store = useStore();
+  const docs = [...store.docs.values()].filter((d) => d.doc);
+  const groups = [
+    { label: 'Vaults', docs: docs.filter((d) => d.doc!.kind === 'vault') },
+    { label: 'Shared stashes', docs: docs.filter((d) => d.doc!.kind === 'stash') },
+    { label: 'Characters', docs: docs.filter((d) => d.doc!.kind === 'character') },
+  ].filter((g) => g.docs.length);
+  const btn = 'block w-full truncate border border-ink-600 bg-ink-900 px-3 py-1.5 text-left text-[12.5px] text-ink-200 hover:border-gold-500 hover:text-gold-300';
+  return (
+    <div className="bg-[#161616] w-[300px] max-w-full border border-ink-700 p-4" role="group" aria-label={`Open a panel on the ${pane === 0 ? 'left' : 'right'}`}>
+      <h3 className="mb-3 text-center font-display text-[12px] uppercase tracking-[.22em]">Open panel</h3>
+      <div className="max-h-[50vh] space-y-3 overflow-auto">
+        {store.settings.tradeEnabled && (
+          <div>
+            <button className={btn} onClick={() => store.showInPane(pane, TRADE_ID)}>
+              Trade
+            </button>
+          </div>
+        )}
+        {groups.map((g) => (
+          <div key={g.label}>
+            <p className="mb-1 text-[10px] uppercase tracking-[.18em] text-ink-500">{g.label}</p>
+            <div className="space-y-1">
+              {g.docs.map((d) => (
+                <button key={d.id} className={btn} onClick={() => store.showInPane(pane, d.id)}>
+                  {docLabel(d.doc, d.name)}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {!groups.length && !store.settings.tradeEnabled && <p className="text-center text-[12px] text-ink-500">Open a save folder first.</p>}
+      </div>
     </div>
   );
 }

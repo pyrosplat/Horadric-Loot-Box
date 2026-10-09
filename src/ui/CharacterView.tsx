@@ -4,6 +4,7 @@ import { desc, itemKey } from '../state/store';
 import { useStore } from './context';
 import { BeltPanel, EquipmentPanel, MercPanel, Panel } from './Equipment';
 import { GoldBar } from './Gold';
+import { CharStatsDialog } from './CharStats';
 import { Grid } from './Grid';
 import { QUALITY_TEXT, useTooltip } from './Tooltip';
 
@@ -11,6 +12,7 @@ const EDITION = ['', 'Classic', 'Lord of Destruction', 'Reign of the Warlock'];
 
 export function CharacterView({ docId, ch, pane, matches }: { docId: string; ch: D2Character; pane: 0 | 1; matches?: (i: D2Item) => boolean }) {
   const store = useStore();
+  const [statsOpen, setStatsOpen] = useState(false);
   const cell = store.showArt ? 38 : 34;
   const boxRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -49,6 +51,7 @@ export function CharacterView({ docId, ch, pane, matches }: { docId: string; ch:
   const threeCols = width >= panelW * 2 + (4 * cell + 28 + 60) + 24;
   return (
     <div className="space-y-3">
+      {statsOpen && <CharStatsDialog ch={ch} onClose={() => setStatsOpen(false)} />}
       <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-300">
         <span className="font-display text-lg font-semibold text-gold-300">{ch.name}</span>
         <span>
@@ -58,6 +61,13 @@ export function CharacterView({ docId, ch, pane, matches }: { docId: string; ch:
         {ch.hardcore && <Badge tone="red">Hardcore</Badge>}
         {ch.ladder && <Badge>Ladder</Badge>}
         {ch.dead && ch.hardcore && <Badge tone="red">Dead</Badge>}
+        <button
+          className="rounded border border-ink-600 px-2 py-[1px] text-[11px] uppercase tracking-wider text-ink-300 hover:border-gold-500 hover:text-gold-300"
+          onClick={() => setStatsOpen(true)}
+          title="Open the character's stats: resistances, FCR, FHR, magic find and more"
+        >
+          Stats
+        </button>
         <span className="ml-auto text-ink-400">
           Gold {(ch.stats.gold ?? 0).toLocaleString()} · Stash {(ch.stats.goldbank ?? 0).toLocaleString()}
         </span>

@@ -74,7 +74,7 @@ export function ItemCard({ item, desc: given, extra, className = '' }: { item?: 
   const d = given ?? desc(item!);
   const color = QUALITY_TEXT[d.qualityClass];
   return (
-    <div className={`w-[300px] max-w-[85vw] rounded-md border border-ink-600 bg-ink-950/95 px-4 py-3 text-center text-[13px] leading-snug shadow-tip backdrop-blur ${className}`}>
+    <div className={`d2-tip w-[300px] max-w-[85vw] rounded-md border border-ink-600 bg-ink-950/95 px-4 py-3 text-center text-[13px] leading-snug shadow-tip backdrop-blur ${className}`}>
       <div className={`font-display text-[15px] font-semibold tracking-wide ${color}`}>{d.name}</div>
       {d.lines.map((l, i) => {
         const prev = d.lines[i - 1];

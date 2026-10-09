@@ -306,6 +306,7 @@ function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: (
               </span>
             </label>
             <ScaleSetting />
+            <ThemeSetting />
             <SharedStashSetting />
           </Section>
           <ArtSettings />
@@ -627,6 +628,35 @@ export function ConfirmItemDelete() {
             Delete
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The game's stone look, or the plain dark one. */
+export function ThemeSetting() {
+  const store = useStore();
+  const mode = store.settings.theme ?? 'stone';
+  return (
+    <div className="mt-4">
+      <p className="text-[13px] text-ink-200">Look</p>
+      <div className="mt-2 grid grid-cols-2 gap-1 rounded-md bg-ink-950 p-1" role="radiogroup" aria-label="Look">
+        {(
+          [
+            ['stone', 'Game stone'],
+            ['classic', 'Plain dark'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="radio"
+            aria-checked={mode === id}
+            onClick={() => store.setSettings({ theme: id })}
+            className={`rounded px-2 py-1.5 text-[12.5px] transition ${mode === id ? 'bg-gold-500 font-semibold text-ink-950' : 'text-ink-300 hover:bg-ink-800'}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   );
