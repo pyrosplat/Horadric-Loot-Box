@@ -67,7 +67,10 @@ let runewords: CatalogEntry[] | undefined;
 
 export function uniqueCatalog(): CatalogEntry[] {
   return (uniques ??= Object.entries(GD.uniques)
-    .filter(([, u]) => !u.disabled && u.name && GD.items[u.code])
+    .filter(([, u]) => {
+      const def = GD.items[u.code];
+      return !u.disabled && u.name && def && !def.quest;
+    })
     .map(([id, u]) => {
       const category = categoryOf(u.code);
       return { id: Number(id), name: u.name, code: u.code, category, sub: category === 'Weapons' ? weaponGroupOf(u.code) : undefined, levelReq: u.levelReq, legacy: u.noChronicle };
@@ -151,26 +154,69 @@ export function collectionKey(kind: CollectionKind, item: D2Item): number | unde
 }
 
 /**
- * Whether a catalog entry gets an ethereal slot: only uniques on weapons and armor with durability (set items
- * can't be ethereal; jewelry, charms, jewels, runes and indestructible bases can't either; runewords are tracked
- * in one slot).
+ * Whether a unique can exist as an ethereal item.
+ *
+ * Explicitly ethereal uniques are included even if their unique definition
+ * also has the indestruct property.
  */
 export function canBeEthereal(kind: CollectionKind, e: CatalogEntry): boolean {
   if (kind !== 'unique') return false;
+
   const def = e.code ? GD.items[e.code] : undefined;
   if (!def || (def.kind !== 'weapon' && def.kind !== 'armor')) return false;
-  return !def.noDur && def.dur > 0;
+
+  if (def.noDur || def.dur <= 0) return false;
+
+  const unique = GD.uniques[String(e.id)];
+
+  const isIndestructible = unique?.props.some(
+    ([code]) => code === 'indestruct',
+  );
+
+  const isExplicitlyEthereal = unique?.props.some(
+    ([code]) => code === 'ethereal',
+  );
+
+  return !isIndestructible || isExplicitlyEthereal;
 }
 
+/**
+ * Whether a catalog entry has a non-ethereal form.
+ *
+ * Explicitly ethereal uniques, such as Ethereal Edge, do not have a
+ * non-ethereal form and therefore should not get a normal slot when
+ * ethereal items are tracked separately.
+ */
+export function canBeNonEthereal(kind: CollectionKind, e: CatalogEntry): boolean {
+  if (kind !== 'unique') return true;
+
+  const unique = GD.uniques[String(e.id)];
+
+  return !unique?.props.some(([code]) => code === 'ethereal');
+}
+
+
 /** Slot key: the catalog id, plus `:eth` for the ethereal slot when ethereal copies are tracked separately. */
-export const slotKey = (id: number, eth: boolean) => (eth ? `${id}:eth` : String(id));
+export const slotKey = (id: number, eth: boolean) =>
+  eth ? `${id}:eth` : String(id);
 
 /**
- * Every slot of a catalog: one per entry, plus an ethereal one for entries that can be ethereal (when split).
- * Legacy entries (not in the game's Chronicle) are only included when `have` holds a copy.
+ * Every slot of a catalog: one per entry, plus an ethereal one for entries
+ * that can be ethereal (when split).
+ *
+ * Explicitly ethereal uniques only get an ethereal slot when splitting is
+ * enabled; they do not get a non-ethereal slot.
+ *
+ * Legacy entries (not in the game's Chronicle) are only included when
+ * `have` holds a copy.
  */
-export function slots(kind: CollectionKind, splitEthereal: boolean, have?: Map<string, unknown[]>): { entry: CatalogEntry; eth: boolean; key: string }[] {
+export function slots(
+  kind: CollectionKind,
+  splitEthereal: boolean,
+  have?: Map<string, unknown[]>,
+): { entry: CatalogEntry; eth: boolean; key: string }[] {
   const out: { entry: CatalogEntry; eth: boolean; key: string }[] = [];
+
   for (const e of catalog(kind)) {
     if (e.legacy) {
       for (const eth of [false, true]) {
@@ -179,11 +225,39 @@ export function slots(kind: CollectionKind, splitEthereal: boolean, have?: Map<s
       }
       continue;
     }
-    out.push({ entry: e, eth: false, key: slotKey(e.id, false) });
-    if (splitEthereal && canBeEthereal(kind, e)) out.push({ entry: e, eth: true, key: slotKey(e.id, true) });
+
+    const ethereal = canBeEthereal(kind, e);
+    const nonEthereal = canBeNonEthereal(kind, e);
+
+    if (!splitEthereal) {
+      out.push({
+        entry: e,
+        eth: false,
+        key: slotKey(e.id, false),
+      });
+      continue;
+    }
+
+    if (nonEthereal) {
+      out.push({
+        entry: e,
+        eth: false,
+        key: slotKey(e.id, false),
+      });
+    }
+
+    if (ethereal) {
+      out.push({
+        entry: e,
+        eth: true,
+        key: slotKey(e.id, true),
+      });
+    }
   }
+
   return out;
 }
+
 
 /** Found / total for a collection, counting only slots the game's Chronicle tracks. */
 export function progress(kind: CollectionKind, splitEthereal: boolean, have: Map<string, unknown[]>): { found: number; total: number } {
