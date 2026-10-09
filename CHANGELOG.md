@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.1
+
+- The panels you had open come back after closing and relaunching the app, with the same files and tabs, for each save folder.
+- Fixed: indestructible uniques such as Stormspire and Tyrael's Might no longer show a possible ethereal slot, and always-ethereal uniques such as Ethereal Edge no longer show a non-ethereal one, when tracking ethereal separately. Quest items are hidden from the Uniques tab. Thanks to witks.
+
 ## 2.5.0
 
 - Free listings: Traderie items that need nothing to trade can be imported and accepted with an empty offer. The trade history shows "Free".

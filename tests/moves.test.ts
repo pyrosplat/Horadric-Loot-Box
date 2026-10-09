@@ -623,6 +623,40 @@ describe('remembering the save folder', () => {
   });
 });
 
+describe('remembering the open panes', () => {
+  test('the desktop app puts each pane back on its file and tab at the next launch', async () => {
+    const mem = new Map<string, string>();
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const old = g.localStorage;
+    g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
+    try {
+      const p = { ...fakePlatform(), id: 'tauri' as const };
+      const a = new Store(p);
+      a.toast = () => {};
+      await a.openFolder('t/');
+      const other = [...a.docs.values()].find((d) => d.doc?.kind === 'stash' && d.id !== a.panes[1].docId)!;
+      a.showInPane(1, other.id, 2);
+      a.showInPane(0, 't/barbexp_v105.d2s', 1);
+      // a new launch: same folder, new store
+      const b = new Store(p);
+      b.toast = () => {};
+      await b.openFolder('t/');
+      expect(b.panes).toEqual([{ docId: 't/barbexp_v105.d2s', tab: 1 }, { docId: other.id, tab: 2 }]);
+      // a file that's gone falls back to the default pane
+      const gone = JSON.parse(mem.get('hlb-panes:t/')!);
+      gone[0].id = 't/deleted.d2s';
+      mem.set('hlb-panes:t/', JSON.stringify(gone));
+      const c = new Store(p);
+      c.toast = () => {};
+      await c.openFolder('t/');
+      expect(c.docs.get(c.panes[0].docId!)?.doc?.kind).toBe('vault');
+      expect(c.panes[1].docId).toBe(other.id);
+    } finally {
+      g.localStorage = old;
+    }
+  });
+});
+
 describe('trade (optional feature)', () => {
   const sid = 't/ModernSharedStashSoftCoreV2.d2i';
   const stackTab = () => modern().tabs.findIndex((t) => t.type === 1);

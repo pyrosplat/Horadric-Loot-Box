@@ -255,6 +255,7 @@ export class Store {
     const offer = new Map<string, number>();
     for (const e of (this.tradeOfferBox.doc as Vault).entries) offer.set(e.item.code, (offer.get(e.item.code) ?? 0) + 1);
     this.trade.offer = offer;
+    this.rememberPanes();
     this.rev++;
     this.listeners.forEach((l) => l());
   }
@@ -407,6 +408,7 @@ export class Store {
         if (![...this.docs.values()].some((d) => d.doc?.kind === 'vault')) this.addVault('MainVault', false, false);
       }
       this.arrangePanes();
+      this.restorePanes();
       this.gameRunning = await this.platform.isGameRunning().catch(() => false);
       if (this.files.length === 0) this.toast('info', this.emptyFolderMessage);
       if (!this.art) void this.loadArt();
@@ -431,6 +433,35 @@ export class Store {
   /** Which files an app keeps after loading (all by default). `doc` is undefined when the file couldn't be read. */
   protected accepts(_doc: AnyDoc | undefined, _file: SaveFileEntry): boolean {
     return true;
+  }
+
+  /** What each pane showed last time this folder was open (desktop app): the file's path (or the Trade panel) and tab. */
+  private panesKey = () => `hlb-panes:${this.folder}`;
+  private panesSaved = '';
+
+  private rememberPanes() {
+    if (this.platform.id !== 'tauri' || !this.folder || this.busy) return;
+    const now = JSON.stringify(this.panes.map((p) => ({ id: p.docId && (p.docId === TRADE_ID || this.docs.get(p.docId)?.path) ? p.docId : undefined, tab: p.tab })));
+    if (now === this.panesSaved) return;
+    this.panesSaved = now;
+    try {
+      localStorage.setItem(this.panesKey(), now);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Puts the panes back the way they were when the app was last closed, for files that are still there. */
+  private restorePanes() {
+    if (this.platform.id !== 'tauri' || !this.folder) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(this.panesKey()) ?? 'null') as { id?: string; tab: number }[] | null;
+      if (!Array.isArray(saved) || saved.length !== 2) return;
+      const ok = (id?: string) => !!id && ((id === TRADE_ID && !!this.settings.tradeEnabled) || !!this.docs.get(id)?.doc);
+      this.panes = this.panes.map((p, i) => (ok(saved[i]?.id) ? { docId: saved[i].id, tab: Number.isInteger(saved[i].tab) && saved[i].tab >= 0 ? saved[i].tab : 0 } : p)) as [PaneState, PaneState];
+    } catch {
+      /* keep the default panes */
+    }
   }
 
   /** What the two panes show after a folder opens. */
