@@ -1,5 +1,20 @@
 import { useMemo, useState } from 'react';
-import { CATEGORIES, GD, ItemFlag, Quality, canMake, describeTemplate, collectHeld, countHeld, runeCounts, slots, type CatalogEntry, type CollectionKind, type D2Item, type Held } from '../core';
+import {
+  CATEGORIES,
+  GD,
+  ItemFlag,
+  Quality,
+  canMake,
+  describeTemplate,
+  collectHeld,
+  countHeld,
+  runeCounts,
+  slots,
+  type CatalogEntry,
+  type CollectionKind,
+  type D2Item,
+  type Held,
+} from '../core';
 import { desc } from '../state/store';
 import { endDrag, startDrag, useStore, countFor } from './context';
 import { GlyphIcon, glyphFor } from './glyphs';
@@ -23,11 +38,35 @@ function makePhantom(kind: CollectionKind, e: CatalogEntry): D2Item | undefined 
   const code = e.code;
   if (!code || !GD.items[code]) return undefined;
   return {
-    saveVersion: 105, raw: new Uint8Array(0), sockets: [], flags: ItemFlag.Identified, formatVersion: 5, mode: 0, bodyLoc: 0, x: 0, y: 0, page: 4,
-    code, def: GD.items[code], compact: false, identified: true, ethereal: false, socketed: false, runeword: false, itemLevel: 1,
+    saveVersion: 105,
+    raw: new Uint8Array(0),
+    sockets: [],
+    flags: ItemFlag.Identified,
+    formatVersion: 5,
+    mode: 0,
+    bodyLoc: 0,
+    x: 0,
+    y: 0,
+    page: 4,
+    code,
+    def: GD.items[code],
+    compact: false,
+    identified: true,
+    ethereal: false,
+    socketed: false,
+    runeword: false,
+    itemLevel: 1,
     quality: kind === 'set' ? Quality.Set : kind === 'rune' || kind === 'gem' ? Quality.Normal : Quality.Unique,
-    compactRune: undefined, uniqueId: kind === 'unique' ? e.id : undefined, setId: kind === 'set' ? e.id : undefined,
-    prefixes: [], suffixes: [], socketCount: 0, stats: [], setBonusStats: [], runewordStats: [], filledSockets: 0,
+    compactRune: undefined,
+    uniqueId: kind === 'unique' ? e.id : undefined,
+    setId: kind === 'set' ? e.id : undefined,
+    prefixes: [],
+    suffixes: [],
+    socketCount: 0,
+    stats: [],
+    setBonusStats: [],
+    runewordStats: [],
+    filledSockets: 0,
   } as D2Item;
 }
 
@@ -36,7 +75,17 @@ function Pic({ item, code, size, missing }: { item?: D2Item; code?: string; size
   const [failed, setFailed] = useState(false);
   const src = store.showArt && !failed ? (item ? store.art?.srcFor(item) : code ? store.art?.srcForCode(code) : undefined) : undefined;
   const style = { width: size, height: size };
-  if (src) return <img src={src} alt="" draggable={false} onError={() => setFailed(true)} className={`pointer-events-none object-contain ${missing ? 'opacity-[.22] grayscale' : ''}`} style={style} />;
+  if (src)
+    return (
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        onError={() => setFailed(true)}
+        className={`pointer-events-none object-contain ${missing ? 'opacity-[.22] grayscale' : ''}`}
+        style={style}
+      />
+    );
   if (!item) return <span style={style} />;
   const d = desc(item);
   return (
@@ -60,7 +109,8 @@ function summarize(copies: Held[]): string {
 /** A stored item scaled into the slot, drawn like the stash grids: art (or tile) with its sockets filled. */
 function Stored({ item, size }: { item: D2Item; size: number }) {
   const store = useStore();
-  const w = item.def?.w ?? 1, h = item.def?.h ?? 1;
+  const w = item.def?.w ?? 1,
+    h = item.def?.h ?? 1;
   const cell = Math.floor(size / Math.max(w, h));
   const view = store.showArt ? store.settings.itemView : 'tiles';
   return (
@@ -85,7 +135,9 @@ interface Section {
 export function CollectionView({ docId, pane, kind, query }: { docId: string; pane: 0 | 1; kind: CollectionKind; query: string }) {
   const store = useStore();
   const tip = useTooltip();
-  const [cat, setCat] = useState<string>('All');
+  const [catPick, setCat] = useState<string>('All');
+  // runes and gems have no categories, so a category picked on another tab must not carry over
+  const cat = kind === 'rune' || kind === 'gem' ? 'All' : catPick;
   const [show, setShow] = useState<'all' | 'found' | 'missing'>('all');
   const [hiMake, setHiMake] = useState(false);
   const split = kind === 'unique' && store.settings.grailEth;
@@ -107,19 +159,27 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
   const runesNote = (e: CatalogEntry) => {
     const need = new Map<string, number>();
     for (const r of e.runes ?? []) need.set(r, (need.get(r) ?? 0) + 1);
-    const missing = [...need].filter(([r, n]) => (runesOwned.get(r) ?? 0) < n).map(([r, n]) => `${GD.items[r]?.name.replace(/ Rune$/, '') ?? r}${n > 1 ? ` ×${n - (runesOwned.get(r) ?? 0)}` : ''}`);
+    const missing = [...need]
+      .filter(([r, n]) => (runesOwned.get(r) ?? 0) < n)
+      .map(([r, n]) => `${GD.items[r]?.name.replace(/ Rune$/, '') ?? r}${n > 1 ? ` ×${n - (runesOwned.get(r) ?? 0)}` : ''}`);
     return missing.length ? `missing runes: ${missing.join(', ')}` : 'you have the runes to make it';
   };
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
-  const visible = all.filter(({ entry: e, key, eth }) => {
+  const visible = all.filter(({ entry: e, key }) => {
     if (cat !== 'All' && e.category !== cat) return false;
     const found = have.has(key);
     if (show === 'found' && !found) return false;
     if (show === 'missing' && found) return false;
-    const hay = `${e.name} ${eth ? 'ethereal eth' : ''} ${e.group ?? ''} ${e.code ? GD.items[e.code]?.name ?? '' : ''} ${(e.runes ?? []).map((r) => GD.items[r]?.name ?? '').join(' ')}`.toLowerCase();
-    return terms.every((t) => hay.includes(t));
+    return true;
   });
+  // a search lights up what matches and fades the rest; it never hides anything, so these tabs can't go blank
+  const lit = (e: CatalogEntry, eth: boolean) => {
+    if (!terms.length) return undefined;
+    const hay =
+      `${e.name} ${eth ? 'ethereal eth' : ''} ${e.group ?? ''} ${e.code ? (GD.items[e.code]?.name ?? '') : ''} ${(e.runes ?? []).map((r) => GD.items[r]?.name ?? '').join(' ')}`.toLowerCase();
+    return terms.every((t) => hay.includes(t)) ? 'hit' : 'dim';
+  };
 
   const sections: Section[] = [];
   const push = (title: string, sl: Slot) => {
@@ -134,7 +194,10 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
     else if (e.category === 'Weapons' && e.sub) push(`Weapons · ${e.sub}`, sl);
     else push(e.category, sl);
   }
-  if (kind !== 'set' && kind !== 'rune' && kind !== 'gem') sections.sort((a, b) => CATEGORIES.indexOf(a.title.split(' · ')[0] as never) - CATEGORIES.indexOf(b.title.split(' · ')[0] as never) || a.title.localeCompare(b.title));
+  if (kind !== 'set' && kind !== 'rune' && kind !== 'gem')
+    sections.sort(
+      (a, b) => CATEGORIES.indexOf(a.title.split(' · ')[0] as never) - CATEGORIES.indexOf(b.title.split(' · ')[0] as never) || a.title.localeCompare(b.title),
+    );
 
   const foundAll = tracked.filter((sl) => have.has(sl.key)).length;
   // legacy copies always go last
@@ -142,7 +205,8 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
   if (li >= 0) sections.push(...sections.splice(li, 1));
   const cats = kind === 'rune' || kind === 'gem' ? [] : ['All', ...CATEGORIES.filter((c) => all.some((sl) => sl.entry.category === c))];
   const pct = tracked.length ? Math.round((foundAll / tracked.length) * 100) : 0;
-  const cellW = 76, img = 46;
+  const cellW = 76,
+    img = 46;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -164,7 +228,10 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
               onClick={() => setCat(c)}
               className={`rounded border px-2 py-0.5 text-[11px] ${cat === c ? 'border-gold-500 bg-gold-600/15 text-gold-300' : 'border-ink-700 text-ink-400 hover:text-ink-200'}`}
             >
-              {c} <span className="text-ink-500">{f}/{inCat.length}</span>
+              {c}{' '}
+              <span className="text-ink-500">
+                {f}/{inCat.length}
+              </span>
             </button>
           );
         })}
@@ -180,14 +247,30 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
             </button>
           )}
           {socketable && (
-            <label className="mr-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-300" title={`Count ${kind}s socketed into items anywhere on the account (shared with the ${kind === 'rune' ? 'Gems' : 'Runes'} tab)`}>
-              <input type="checkbox" className="accent-[#9ab8d8]" checked={withSocketed} onChange={(e) => store.setSettings({ grailSocketed: e.target.checked })} />
+            <label
+              className="mr-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-300"
+              title={`Count ${kind}s socketed into items anywhere on the account (shared with the ${kind === 'rune' ? 'Gems' : 'Runes'} tab)`}
+            >
+              <input
+                type="checkbox"
+                className="accent-[#9ab8d8]"
+                checked={withSocketed}
+                onChange={(e) => store.setSettings({ grailSocketed: e.target.checked })}
+              />
               Include {kind}s in items
             </label>
           )}
           {kind === 'unique' && (
-            <label className="mr-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-300" title="Give every item that can be ethereal a second slot for its ethereal copy">
-              <input type="checkbox" className="accent-[#9ab8d8]" checked={store.settings.grailEth} onChange={(e) => store.setSettings({ grailEth: e.target.checked })} />
+            <label
+              className="mr-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-300"
+              title="Give every item that can be ethereal a second slot for its ethereal copy"
+            >
+              <input
+                type="checkbox"
+                className="accent-[#9ab8d8]"
+                checked={store.settings.grailEth}
+                onChange={(e) => store.setSettings({ grailEth: e.target.checked })}
+              />
               Track ethereal separately
             </label>
           )}
@@ -235,6 +318,7 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                   const shownItem = first ?? phantom(kind, e);
                   // not found yet: describe it from the game tables (stats with their possible ranges)
                   const template = !found && (kind === 'unique' || kind === 'set' || kind === 'runeword') ? describeTemplate(kind, e.id) : undefined;
+                  const mark = lit(e, eth);
                   const color = kind === 'set' ? 'text-q-set' : 'text-q-unique';
                   return (
                     <div
@@ -265,7 +349,9 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                               y: ev.clientY,
                               extra: found
                                 ? `${where}${eth ? ' (ethereal)' : ''} · ${
-                                    usable ? 'drag or double-click to move one out of the vault · right-click to delete one' : 'not in this vault: move it from where it is'
+                                    usable
+                                      ? 'drag or double-click to move one out of the vault · right-click to delete one'
+                                      : 'not in this vault: move it from where it is'
                                   }${canCraft ? ' · you have the runes to make another' : ''}`
                                 : `${eth ? 'No ethereal copy' : 'Not found'} on this account yet${kind === 'runeword' ? ` · ${runesNote(e)}` : ''}`,
                             })
@@ -280,7 +366,7 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                           : canCraft
                             ? 'cursor-default border-emerald-600/80 bg-emerald-950/30 shadow-[0_0_10px_rgba(16,185,129,.25)]'
                             : 'cursor-default border-dashed border-[#2d2b27] bg-[#121110]'
-                      } ${found && canCraft ? 'outline outline-2 outline-offset-2 outline-emerald-500/90 shadow-[0_0_12px_rgba(16,185,129,.45)]' : ''}`}
+                      } ${mark === 'dim' ? 'opacity-30' : mark === 'hit' ? 'ring-2 ring-gold-400' : ''} ${found && canCraft ? 'outline outline-2 outline-offset-2 outline-emerald-500/90 shadow-[0_0_12px_rgba(16,185,129,.45)]' : ''}`}
                       style={{ width: cellW, borderColor: found ? FOUND_BORDER[kind] : undefined }}
                     >
                       {kind === 'runeword' && !first ? (
@@ -289,8 +375,10 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                             <Pic key={i} code={r} size={e.runes!.length > 3 ? 16 : 20} missing={!canCraft} />
                           ))}
                         </span>
+                      ) : first ? (
+                        <Stored item={first} size={img + 10} />
                       ) : (
-                        first ? <Stored item={first} size={img + 10} /> : <Pic item={shownItem} size={img} missing />
+                        <Pic item={shownItem} size={img} missing />
                       )}
                       <span className={`mt-1 line-clamp-2 text-[10px] font-medium leading-[1.15] ${found ? color : 'text-ink-500'}`}>{e.name}</span>
                       {kind === 'runeword' && (
@@ -298,14 +386,21 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                           {(e.runes ?? []).map((r) => GD.items[r]?.name.replace(/ Rune$/, '')).join(' ')}
                         </span>
                       )}
-                      {n > 1 && <span className="absolute right-1 top-1 rounded bg-black/70 px-1 text-[10px] font-bold leading-[14px] text-white !opacity-100">×{n}</span>}
+                      {n > 1 && (
+                        <span className="absolute right-1 top-1 rounded bg-black/70 px-1 text-[10px] font-bold leading-[14px] text-white !opacity-100">
+                          ×{n}
+                        </span>
+                      )}
                       {nItems > 0 && (
                         <span className="mt-0.5 text-[9px] leading-tight text-sky-300 !opacity-100" title={where}>
                           {nItems} in item{nItems > 1 ? 's' : ''}
                         </span>
                       )}
                       {elsewhere && (
-                        <span className="absolute left-1 top-1 rounded bg-sky-900/90 px-1 text-[8px] font-bold uppercase leading-[12px] tracking-wide text-sky-100 !opacity-100" title={where}>
+                        <span
+                          className="absolute left-1 top-1 rounded bg-sky-900/90 px-1 text-[8px] font-bold uppercase leading-[12px] tracking-wide text-sky-100 !opacity-100"
+                          title={where}
+                        >
                           {copies.every((c) => c.socketedIn)
                             ? 'in item'
                             : store.docs.get(copies[0].docId)?.doc?.kind === 'character'
@@ -316,13 +411,21 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
                         </span>
                       )}
                       {canCraft && found && (
-                        <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-700 px-1 text-[8px] font-bold uppercase leading-[12px] text-white !opacity-100">can make</span>
+                        <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-700 px-1 text-[8px] font-bold uppercase leading-[12px] text-white !opacity-100">
+                          can make
+                        </span>
                       )}
                       {canCraft && !found && (
-                        <span className="absolute left-1 top-1 rounded bg-emerald-700/90 px-1 text-[8px] font-bold uppercase leading-[12px] text-white">can make</span>
+                        <span className="absolute left-1 top-1 rounded bg-emerald-700/90 px-1 text-[8px] font-bold uppercase leading-[12px] text-white">
+                          can make
+                        </span>
                       )}
                       {eth && (
-                        <span className={`absolute left-1 top-1 rounded px-1 text-[8.5px] font-bold uppercase leading-[13px] ${found ? 'bg-[#3a4a5a] text-[#cfe3ff]' : 'bg-[#1c2229] text-[#5d6b78]'}`}>eth</span>
+                        <span
+                          className={`absolute left-1 top-1 rounded px-1 text-[8.5px] font-bold uppercase leading-[13px] ${found ? 'bg-[#3a4a5a] text-[#cfe3ff]' : 'bg-[#1c2229] text-[#5d6b78]'}`}
+                        >
+                          eth
+                        </span>
                       )}
                     </div>
                   );

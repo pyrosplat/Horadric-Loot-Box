@@ -12,6 +12,7 @@ A muling and holy-grail tool for **Diablo II: Resurrected: Reign of the Warlock*
 - **Holy grail tabs** for uniques, sets, runewords, runes and gems, counted across your whole account (matches the game's Chronicle).
 - **Stats and roll ranges** on every item, found or not (★ = perfect roll).
 - **Stackables and gold** moved between characters, stashes and vaults.
+- **Character screen** with attributes, resistances by difficulty, attack rating and damage, and cast, hit recovery, block and attack speed breakpoints that follow your gear.
 - **Offline trading** from Traderie screenshots (see below).
 - **Safe saving:** a backup before every save, each save checked before it's written, no saving while the game runs, and Softcore/Hardcore never mix.
 - **Automatic updates** from GitHub releases.
@@ -78,6 +79,7 @@ npm run desktop:build  # installers
 
 - [CascLib](https://github.com/ladislav-zezula/CascLib) (MIT).
 - Save-format research: [D2SSharp](https://github.com/ResurrectedTrader/D2SSharp), [halbu](https://github.com/feored/halbu), [d2s](https://github.com/dschu012/d2s), [d07riv](https://github.com/d07RiV/d07riv.github.io) and [GoMule](https://gomule.sourceforge.io/). Test saves come from D2SSharp and halbu.
+- Attack speed breakpoints: the method and animation data come from [Warren1001's IAS Calculator](https://warren1001.github.io/IAS_Calculator/) ([source](https://github.com/Warren1001/IAS_Calculator)), which credits RuffnecKk (D2RLoader) for the animation dump, ChthonVII, ubeogesh, the Amazon Basin forum and Phrozen Keep. The tables are checked against it in `tests/ias.test.ts`.
 - Game tables (© Blizzard) via [D2R-Excel](https://github.com/pinkufairy/D2R-Excel) and [d2data](https://github.com/blizzhackers/d2data). They aren't covered by this project's license; see [NOTICE](vendor/d2r-3.3/NOTICE.md).
 
 Diablo® II: Resurrected™ is a trademark of Blizzard Entertainment, Inc. This project isn't affiliated with Blizzard. Back up your saves.

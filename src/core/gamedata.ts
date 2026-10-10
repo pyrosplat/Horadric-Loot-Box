@@ -50,6 +50,9 @@ export interface ItemDef {
   max2h?: number;
   minMis?: number;
   maxMis?: number;
+  /** Percent of Strength / Dexterity added to the weapon's damage. */
+  strBonus?: number;
+  dexBonus?: number;
   oneOrTwo?: boolean;
   twoHanded?: boolean;
   minAc?: number;

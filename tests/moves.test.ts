@@ -1337,7 +1337,7 @@ describe('selling to buyers, and paying with items', () => {
 
 describe('character stats', () => {
   test('gear totals for a loaded character: attributes, resists capped, speeds with breakpoints', async () => {
-    const { characterStats, parseCharacter, FCR_BREAKPOINTS } = await import('../src/core');
+    const { characterStats, parseCharacter } = await import('../src/core');
     const fs = require('node:fs') as typeof import('node:fs');
     const ch = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/ChaosSC.d2s')), 'ChaosSC.d2s');
     const s = characterStats(ch);
@@ -1349,7 +1349,40 @@ describe('character stats', () => {
     const barb = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/barbrotw_v105.d2s')), 'barbrotw_v105.d2s');
     const b = characterStats(barb);
     expect([b.life, b.mana, b.stamina]).toEqual([55, 10, 92]);
-    expect(b.fcr).toEqual({ value: 0, at: 0, next: FCR_BREAKPOINTS.Barbarian[1] });
+    expect([b.fcr, b.fhr, b.fbr]).toEqual([0, 0, 0]);
+  });
+
+  test('attack rating, damage and breakpoint notes match a real in-game Necromancer', async () => {
+    const { characterStats, parseCharacter } = await import('../src/core');
+    const fs = require('node:fs') as typeof import('node:fs');
+    const ch = parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/DeathMaker.d2s')), 'DeathMaker.d2s');
+    const s = characterStats(ch);
+    // the game shows Attack Rating 275 and Damage 29-56 for this character (the damage here may round a point higher)
+    expect(s.attackRating).toBe(275);
+    expect(s.damage.min).toBe(29);
+    expect(s.damage.max).toBeGreaterThanOrEqual(56);
+    expect(s.damage.max).toBeLessThanOrEqual(57);
+    expect([s.fcr, s.fhr, s.fbr]).toEqual([25, 35, 15]);
+    // a fresh level 1 Barbarian: 5 per Dexterity above 7, plus the class base
+    const barb = characterStats(parseCharacter(new Uint8Array(fs.readFileSync('tests/fixtures/barbrotw_v105.d2s')), 'barbrotw_v105.d2s'));
+    expect(barb.attackRating).toBe((20 - 7) * 5 + 20);
+  });
+
+  test('breakpoint tables: every class has cast, hit recovery and block rate, and the current step is found', async () => {
+    const { BREAKPOINTS, breakpointStatus } = await import('../src/core');
+    for (const cls of ['Amazon', 'Assassin', 'Barbarian', 'Druid', 'Necromancer', 'Paladin', 'Sorceress', 'Warlock']) {
+      const tables = BREAKPOINTS[cls];
+      for (const stat of ['fcr', 'fhr', 'fbr'] as const) expect(tables.some((t) => t.stat === stat)).toBe(true);
+      for (const t of tables) {
+        expect(t.pct[0]).toBe(0);
+        expect(t.pct.every((p, i) => i === 0 || p > t.pct[i - 1])).toBe(true);
+        expect(t.start - (t.pct.length - 1)).toBeGreaterThanOrEqual(1); // never below one frame
+      }
+    }
+    // Necromancer hit recovery at 35%: the 26% step (9 frames), the next at 39% is 4 more
+    const fhr = BREAKPOINTS.Necromancer.find((t) => t.stat === 'fhr')!;
+    expect(breakpointStatus(fhr, 35)).toEqual({ index: 4, frames: 9, next: { frames: 8, pct: 39, need: 4 } });
+    expect(breakpointStatus(fhr, 400).next).toBeUndefined();
   });
 
   test('follows gear moves: taking the helm off changes the totals and the advanced list', async () => {
@@ -1360,5 +1393,42 @@ describe('character stats', () => {
     const after = characterStats(chaos());
     expect(after.itemCount).toBe(before.itemCount - 1);
     expect(after.defense).toBeLessThan(before.defense);
+  });
+});
+
+describe('vault tabs', () => {
+  test('magic and rare jewels are in the Jewels tab, not the Items list', async () => {
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { StoreContext } = await import('../src/ui/context');
+    const { VaultView } = await import('../src/ui/VaultView');
+    const { TooltipProvider } = await import('../src/ui/Tooltip');
+    const soska = () => doc<D2Character>('Soska.d2s');
+    const jewels = soska().items.filter((i) => i.code === 'jew' && i.mode === ItemMode.Stored);
+    expect(jewels.length).toBe(3);
+    for (const j of jewels) expect(store.move(j, 't/Soska.d2s', { docId: vaultId(), area: 'vault' })).toBe(true);
+    const vault = store.docs.get(vaultId())!.doc as never;
+    const html = () =>
+      renderToStaticMarkup(React.createElement(StoreContext.Provider, { value: store }, React.createElement(TooltipProvider, null, React.createElement(VaultView, { docId: vaultId(), vault, pane: 0, query: '' }))));
+    const page = html();
+    expect(page).toMatch(/Jewels <span[^>]*>3<\/span>/);
+    // the Items list (the open tab) lists none of them
+    expect(page).not.toMatch(/<li[^>]*>(?:(?!<\/li>).)*Jewel/);
+  });
+
+  test('charms (uniques too) are in their own Charms tab, not the Items list', async () => {
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { StoreContext } = await import('../src/ui/context');
+    const { VaultView } = await import('../src/ui/VaultView');
+    const { TooltipProvider } = await import('../src/ui/Tooltip');
+    const chaos = doc<D2Character>('ChaosSC.d2s');
+    const charms = chaos.items.filter((i) => ['cm1', 'cm2', 'cm3'].includes(i.code) && i.mode === ItemMode.Stored).slice(0, 3);
+    expect(charms.length).toBe(3);
+    for (const c of charms) expect(store.move(c, 't/ChaosSC.d2s', { docId: vaultId(), area: 'vault' })).toBe(true);
+    const vault = store.docs.get(vaultId())!.doc as never;
+    const page = renderToStaticMarkup(React.createElement(StoreContext.Provider, { value: store }, React.createElement(TooltipProvider, null, React.createElement(VaultView, { docId: vaultId(), vault, pane: 0, query: '' }))));
+    expect(page).toMatch(/Charms <span[^>]*>3<\/span>/);
+    expect(page).toMatch(/Items <span[^>]*>0<\/span>/);
   });
 });

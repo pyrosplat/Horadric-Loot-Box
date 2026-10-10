@@ -15,32 +15,78 @@ const PER_POINT: Record<string, { life: number; stamina: number; mana: number }>
   Warlock: { life: 12, stamina: 4, mana: 8 },
 };
 
-/** Faster Cast Rate breakpoints (spell casting), per class, the standard Diablo II tables. Warlock has none yet. */
-export const FCR_BREAKPOINTS: Record<string, number[]> = {
-  Amazon: [0, 7, 14, 22, 32, 48, 68, 99, 152],
-  Assassin: [0, 8, 16, 27, 42, 65, 102, 174],
-  Barbarian: [0, 9, 20, 37, 63, 105, 200],
-  Druid: [0, 4, 10, 19, 30, 46, 68, 99, 163],
-  Necromancer: [0, 9, 18, 30, 48, 75, 125],
-  Paladin: [0, 9, 18, 30, 48, 75, 125],
-  Sorceress: [0, 9, 20, 37, 63, 105, 200],
+/** charstats.txt ToHitFactor: the class's base attack rating, added to 5 per Dexterity point above 7. */
+const TO_HIT: Record<string, number> = { Amazon: 5, Sorceress: -15, Necromancer: -10, Paladin: 20, Barbarian: 20, Druid: 5, Assassin: 15, Warlock: 5 };
+
+/** One breakpoint table: the frames an action takes at each Faster Cast / Hit Recovery / Block Rate percentage. */
+/** One step of an attack speed table: the frame count you get from `need` IAS on. */
+export interface BreakpointStep {
+  frames: number;
+  /** What to show for the step when it is more than the frame count (the hits of Zeal). */
+  label?: string;
+  need: number;
+}
+
+export interface BreakpointTable {
+  stat: 'fcr' | 'fhr' | 'fbr';
+  /** What decides which table applies when a class has more than one (weapon type, Holy Shield). */
+  variant?: string;
+  /** Frames, slowest first (one fewer each step), and the percentage needed for each. */
+  start: number;
+  pct: number[];
+}
+
+const T = (stat: BreakpointTable['stat'], start: number, pct: number[], variant?: string): BreakpointTable => ({ stat, start, pct, variant });
+const NECRO_FHR = [0, 5, 10, 16, 26, 39, 56, 86, 152, 377];
+const BLOCK_FAST = [0, 13, 32, 86, 600];
+const BLOCK_SLOW = [0, 6, 13, 20, 32, 52, 86, 174, 600];
+
+/**
+ * Breakpoints per class, from the D2R tables on d2runes.io and d2emu.com, which agree (cast, hit recovery and block rate; Druid
+ * shapeshift forms and the Necromancer's Vampire Form are not here). The Warlock's tables are community-tested, the Necromancer's.
+ */
+export const BREAKPOINTS: Record<string, BreakpointTable[]> = {
+  Amazon: [
+    T('fcr', 19, [0, 7, 14, 22, 32, 48, 68, 99, 152]),
+    T('fhr', 11, [0, 6, 13, 20, 32, 52, 86, 174, 600]),
+    T('fbr', 17, [0, 4, 6, 11, 15, 23, 29, 40, 56, 80, 120, 200, 480], 'One-handed weapon'),
+    T('fbr', 5, BLOCK_FAST, 'Other weapons'),
+  ],
+  Assassin: [T('fcr', 16, [0, 8, 16, 27, 42, 65, 102, 174]), T('fhr', 9, [0, 7, 15, 27, 48, 86, 200]), T('fbr', 5, BLOCK_FAST)],
+  Barbarian: [T('fcr', 13, [0, 9, 20, 37, 63, 105, 200]), T('fhr', 9, [0, 7, 15, 27, 48, 86, 200]), T('fbr', 7, [0, 9, 20, 42, 86, 280])],
+  Druid: [
+    T('fcr', 18, [0, 4, 10, 19, 30, 46, 68, 99, 163]),
+    T('fhr', 14, [0, 3, 7, 13, 19, 29, 42, 63, 99, 174, 456], 'One-handed weapon'),
+    T('fhr', 13, NECRO_FHR, 'Two-handed weapon'),
+    T('fbr', 11, BLOCK_SLOW),
+  ],
+  Necromancer: [T('fcr', 15, [0, 9, 18, 30, 48, 75, 125]), T('fhr', 13, NECRO_FHR), T('fbr', 11, BLOCK_SLOW)],
+  Paladin: [
+    T('fcr', 15, [0, 9, 18, 30, 48, 75, 125]),
+    T('fhr', 13, [0, 3, 7, 13, 20, 32, 48, 75, 129, 280], 'Spears and staves'),
+    T('fhr', 9, [0, 7, 15, 27, 48, 86, 200], 'Other weapons'),
+    T('fbr', 5, BLOCK_FAST),
+    T('fbr', 2, [0, 86], 'With Holy Shield'),
+  ],
+  Sorceress: [
+    T('fcr', 19, [0, 7, 15, 23, 35, 52, 78, 117, 194], 'Lightning and Chain Lightning'),
+    T('fcr', 13, [0, 9, 20, 37, 63, 105, 200], 'Other spells'),
+    T('fhr', 15, [0, 5, 9, 14, 20, 30, 42, 60, 86, 142, 280]),
+    T('fbr', 9, [0, 7, 15, 27, 48, 86, 200]),
+  ],
+  Warlock: [T('fcr', 15, [0, 9, 18, 30, 48, 75, 125]), T('fhr', 13, NECRO_FHR), T('fbr', 11, BLOCK_SLOW)],
 };
 
-/** Faster Hit Recovery breakpoints, per class (the classes whose tables are certain). */
-export const FHR_BREAKPOINTS: Record<string, number[]> = {
-  Amazon: [0, 6, 13, 20, 32, 52, 86, 174, 600],
-  Assassin: [0, 10, 27, 48, 86, 200],
-  Barbarian: [0, 9, 20, 42, 86, 280],
-  Druid: [0, 9, 20, 42, 86, 280],
-  Paladin: [0, 7, 15, 27, 48, 86, 200],
-  Sorceress: [0, 5, 9, 14, 20, 30, 42, 60, 86, 142, 280],
-};
-
-export interface Breakpoint {
-  value: number;
-  /** The breakpoint you are at, and the next one (undefined when there is none or the class has no table). */
-  at?: number;
-  next?: number;
+/** Where a value lands in a table: the step you are on (and its frames), and the next one up with how much more it needs. */
+export function breakpointStatus(table: BreakpointTable, value: number) {
+  let at = 0;
+  table.pct.forEach((p, i) => value >= p && (at = i));
+  const nextIndex = at + 1 < table.pct.length ? at + 1 : undefined;
+  return {
+    index: at,
+    frames: table.start - at,
+    next: nextIndex === undefined ? undefined : { frames: table.start - nextIndex, pct: table.pct[nextIndex], need: table.pct[nextIndex] - value },
+  };
 }
 
 export interface ResistRow {
@@ -79,10 +125,29 @@ export interface CharStatsResult {
   magicFlat: number;
   /** Anya's resistance bonus in Normal, Nightmare and Hell. */
   anya: { normal: number; nightmare: number; hell: number };
-  fcr: Breakpoint;
-  fhr: Breakpoint;
+  /** Attack rating, and the damage range (physical with Strength or Dexterity, elemental and poison) of the weapon in the main hand. */
+  attackRating: number;
+  damage: { min: number; max: number };
+  /** Faster Cast Rate, Faster Hit Recovery and Faster Block Rate from gear (see BREAKPOINTS for what they do). */
+  fcr: number;
+  fhr: number;
+  fbr: number;
   frw: number;
   ias: number;
+  /** Base name of the weapon in the main hand (Broad Sword, Phase Blade). */
+  weaponBase?: string;
+  weaponType?: string;
+  /** IAS on the main-hand weapon itself, and the weapon in the off hand (two-weapon fighters) with its base name, type code and IAS. */
+  /** IAS from everything but the two weapons. */
+  iasGear: number;
+  mainIas: number;
+  offBase?: string;
+  offType?: string;
+  offIas: number;
+  /** Aura levels the gear gives, by skill id. */
+  auras: Record<number, number>;
+  /** skills the gear grants outside the class's own tree (item_nonclassskill / item_singleskill), by skill id */
+  gearSkills: number[];
   magicFind: number;
   goldFind: number;
   allSkills: number;
@@ -92,7 +157,7 @@ export interface CharStatsResult {
   lifeLeech: number;
   manaLeech: number;
   /** The "Advanced Stats" list, worded the way the game words it, only what the gear gives. */
-  advanced: string[];
+  advanced: { text: string }[];
   /** Items counted: equipped gear (not the weapon swap) and charms in the inventory. */
   itemCount: number;
 }
@@ -150,6 +215,19 @@ export function characterStats(ch: D2Character): CharStatsResult {
   for (const it of items) add(itemStats(it));
   add(setBonuses(items));
   const get = (key: string) => sum.get(idOf(key)) ?? 0;
+  // auras the gear gives, by skill id (Faith gives Fanaticism, Hustle Burst of Speed...): the best level of each
+  const auras: Record<number, number> = {};
+  for (const st of [...items.flatMap((i) => itemStats(i)), ...setBonuses(items)]) {
+    if (st.id === idOf('item_aura') && st.value > (auras[st.param] ?? 0)) auras[st.param] = st.value;
+  }
+
+  const gearSkills = [
+    ...new Set(
+      [...items.flatMap((i) => itemStats(i)), ...setBonuses(items)]
+        .filter((st) => st.id === idOf('item_nonclassskill') || st.id === idOf('item_singleskill'))
+        .map((st) => st.param),
+    ),
+  ];
 
   const base = (k: string) => ch.stats[k] ?? 0;
   const strength = base('strength') + get('strength');
@@ -170,7 +248,10 @@ export function characterStats(ch: D2Character): CharStatsResult {
     if (it.def?.flags.includes('A')) {
       const line = describeItem(it).lines.find((l) => /^Defense: \d+/.test(l.text));
       defense += line ? Number(/\d+/.exec(line.text)![0]) : 0;
-    } else defense += itemStats(it).filter((s) => s.id === idOf('armorclass')).reduce((n, s) => n + s.value, 0);
+    } else
+      defense += itemStats(it)
+        .filter((s) => s.id === idOf('armorclass'))
+        .reduce((n, s) => n + s.value, 0);
   }
   defense += Math.floor(dexterity / 4);
 
@@ -184,17 +265,51 @@ export function characterStats(ch: D2Character): CharStatsResult {
     return { total, max: cap, normal: held(0, bonus(0)), nightmare: held(40, bonus(1)), hell: held(100, bonus(2)) };
   };
 
-  const bp = (value: number, table?: number[]): Breakpoint => {
-    if (!table) return { value };
-    const at = [...table].reverse().find((t) => value >= t);
-    const next = table.find((t) => t > value);
-    return { value, at, next };
-  };
+  // attack rating: 5 per Dexterity above 7, the class's base, flat bonuses, then the percent bonus
+  const attackRating = Math.max(0, Math.floor((((dexterity - 7) * 5 + (TO_HIT[ch.className] ?? 0) + get('tohit')) * (100 + get('item_tohit_percent'))) / 100));
 
-  const lines: string[] = [];
+  // damage of the main-hand weapon: its tooltip damage (enhanced damage, ethereal and its own flat bonuses already in), plus flat
+  // bonuses from other gear, grown by the weapon's Strength / Dexterity bonus, plus elemental damage and poison from all gear
+  // a weapon in the off hand (two-weapon fighters) only speeds up its own swings, not the main hand's
+  const offHand = items.find((i) => i.mode === ItemMode.Equipped && i.bodyLoc === 5 && i.def?.flags.includes('W'));
+  const iasOf = (it?: D2Item) => (it ? itemStats(it).reduce((a, st) => a + (st.id === idOf('item_fasterattackrate') ? st.value : 0), 0) : 0);
+  const offHandIas = iasOf(offHand);
+  const weapon = items.find((i) => i.mode === ItemMode.Equipped && i.bodyLoc === 4 && i.def?.flags.includes('W'));
+  const tip =
+    weapon &&
+    describeItem(weapon)
+      .lines.map((l) => /^(?:One-Hand|Two-Hand|Throw) Damage: (\d+) to (\d+)/.exec(l.text))
+      .find(Boolean);
+  let [pMin, pMax] = tip ? [Number(tip[1]), Number(tip[2])] : [1, 2]; // bare hands
+  let others = 0;
+  for (const it of items) {
+    if (it === weapon) continue;
+    for (const st of itemStats(it)) {
+      const d = GD.stats[st.id];
+      if (d?.key === 'mindamage') pMin += st.value;
+      else if (d?.key === 'maxdamage') pMax += st.value;
+      else if (d?.key === 'item_maxdamage_percent') others += st.value;
+    }
+  }
+  const grow = 1 + (((weapon?.def?.strBonus ?? 0) * strength) / 100 + ((weapon?.def?.dexBonus ?? 0) * dexterity) / 100 + others) / 100;
+  let dMin = pMin * grow + get('firemindam') + get('coldmindam') + get('lightmindam') + get('magicmindam');
+  let dMax = pMax * grow + get('firemaxdam') + get('coldmaxdam') + get('lightmaxdam') + get('magicmaxdam');
+  // poison is shown as the total it does: damage per frame (in 256ths) over its length in frames
+  const poisonId = idOf('poisonlength');
+  for (const it of items) {
+    const list = itemStats(it);
+    const len = list.find((x) => x.id === poisonId)?.value ?? 0;
+    for (const st of list) {
+      const key = GD.stats[st.id]?.key;
+      if (key === 'poisonmindam') dMin += (st.value * len) / 256;
+      else if (key === 'poisonmaxdam') dMax += (st.value * len) / 256;
+    }
+  }
+
+  const lines: { text: string }[] = [];
   const line = (key: string, text: (v: number) => string) => {
     const v = Math.round(get(key));
-    if (v !== 0) lines.push(text(v));
+    if (v !== 0) lines.push({ text: text(v) });
   };
   const sg = (v: number) => (v > 0 ? `+${v}` : `${v}`);
   line('manarecoverybonus', (v) => `Regenerate Mana ${v}%`);
@@ -237,6 +352,8 @@ export function characterStats(ch: D2Character): CharStatsResult {
 
   return {
     advanced: lines,
+    attackRating,
+    damage: { min: Math.floor(dMin), max: Math.floor(dMax) },
     anya: { normal: bonus(0), nightmare: bonus(1), hell: bonus(2) },
     name: ch.name,
     className: ch.className,
@@ -258,10 +375,20 @@ export function characterStats(ch: D2Character): CharStatsResult {
     physFlat: get('normal_damage_reduction'),
     magicPct: get('magicresist'),
     magicFlat: get('magic_damage_reduction'),
-    fcr: bp(get('item_fastercastrate'), FCR_BREAKPOINTS[ch.className]),
-    fhr: bp(get('item_fastergethitrate'), FHR_BREAKPOINTS[ch.className]),
+    fcr: get('item_fastercastrate'),
+    fhr: get('item_fastergethitrate'),
+    fbr: get('item_fasterblockrate'),
     frw: get('item_fastermovevelocity'),
-    ias: get('item_fasterattackrate'),
+    ias: get('item_fasterattackrate') - offHandIas,
+    weaponBase: weapon?.def?.name,
+    weaponType: weapon?.def?.type,
+    iasGear: get('item_fasterattackrate') - iasOf(weapon) - offHandIas,
+    mainIas: iasOf(weapon),
+    offBase: offHand?.def?.name,
+    offType: offHand?.def?.type,
+    offIas: offHandIas,
+    auras,
+    gearSkills,
     magicFind: get('item_magicbonus'),
     goldFind: get('item_goldbonus'),
     allSkills: get('item_allskills'),

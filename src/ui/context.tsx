@@ -7,7 +7,7 @@ export const StoreContext = createContext<Store | null>(null);
 export function useStore(): Store {
   const s = useContext(StoreContext);
   if (!s) throw new Error('StoreContext missing');
-  useSyncExternalStore(s.subscribe, s.getRev);
+  useSyncExternalStore(s.subscribe, s.getRev, s.getRev);
   return s;
 }
 

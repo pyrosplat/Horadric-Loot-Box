@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.0
+
+- Characters: attack speed (IAS) calculator on the character screen, with frames per animation (FPA) Based on Warren1001's IAS Calculator.
+- Vault: new Charms tab (small, large, grand, unique), and class items as chips under the filters
+- Vault: item tier filter (Normal, Exceptional, Elite), throwing weapons, and Katars label; tiers with nothing to show are greyed out
+- Search now highlights matching items instead of hiding the rest, and understands short names such as mf, fcr, fhr and ias
+- Fixed: Runes and Gems tabs showed blank after picking a category on another tab
+
 ## 2.6.0
 
 - New theme in Settings

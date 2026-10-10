@@ -1,5 +1,5 @@
 import { Suspense, lazy, useState } from 'react';
-import type { D2Item } from '../core';
+import { searchMatcher, type D2Item } from '../core';
 import { TRADE_ID, desc, docLabel } from '../state/store';
 import { CharacterView } from './CharacterView';
 import { useStore, docDrag } from './context';
@@ -14,13 +14,18 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
   const state = store.panes[pane];
   const entry = state.docId ? store.docs.get(state.docId) : undefined;
   const [query, setQuery] = useState('');
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = terms.length ? (i: D2Item) => terms.every((t) => desc(i).search.includes(t)) : undefined;
+  const test = searchMatcher(query);
+  const matches = test ? (i: D2Item) => test(desc(i).search) : undefined;
   const docs = [...store.docs.values()].filter((d) => d.doc);
   const [docOver, setDocOver] = useState(false);
   const dragged = docDrag.id ? store.docs.get(docDrag.id) : undefined;
   // a closed side stays an empty space, so the other side keeps its width
-  if (state.closed) return <div className="flex min-w-0 flex-1 items-center justify-center"><OpenPanelBox pane={pane} /></div>;
+  if (state.closed)
+    return (
+      <div className="flex min-w-0 flex-1 items-center justify-center">
+        <OpenPanelBox pane={pane} />
+      </div>
+    );
 
   return (
     <div
@@ -77,7 +82,7 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={entry?.doc?.kind === 'vault' ? 'Search vault…' : 'Highlight…'}
+            placeholder={entry?.doc?.kind === 'vault' ? 'Highlight in vault…' : 'Highlight…'}
             className="w-full rounded border border-ink-600 bg-ink-900 py-1 pl-2 pr-6 text-[12px] text-ink-200 placeholder:text-ink-500 focus:border-gold-500 focus:outline-none"
           />
           {query && (
@@ -86,7 +91,12 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
             </button>
           )}
         </div>
-        <button className="d2-close" onClick={() => store.closePane(pane)} aria-label={`Close the ${pane === 0 ? 'left' : 'right'} side`} title={`Close the ${pane === 0 ? 'left' : 'right'} side`}>
+        <button
+          className="d2-close"
+          onClick={() => store.closePane(pane)}
+          aria-label={`Close the ${pane === 0 ? 'left' : 'right'} side`}
+          title={`Close the ${pane === 0 ? 'left' : 'right'} side`}
+        >
           ×
         </button>
       </div>
@@ -97,7 +107,9 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
             <TradeView />
           </Suspense>
         ) : !entry ? (
-          <div className="flex h-full min-h-[300px] items-center justify-center"><OpenPanelBox pane={pane} /></div>
+          <div className="flex h-full min-h-[300px] items-center justify-center">
+            <OpenPanelBox pane={pane} />
+          </div>
         ) : entry.error ? (
           <div className="rounded border border-red-900 bg-red-950/40 p-4 text-[13px] text-red-200">
             <p className="font-medium">Couldn't read {entry.name}</p>
@@ -138,7 +150,12 @@ function SelectionBar({ docId, pane }: { docId: string; pane: 0 | 1 }) {
           Send to vault
         </button>
       )}
-      <button className={`${btn} text-red-200 hover:bg-red-900/50`} onClick={() => store.requestDelete(docId, items)} disabled={store.settings.readOnly} title="Delete key">
+      <button
+        className={`${btn} text-red-200 hover:bg-red-900/50`}
+        onClick={() => store.requestDelete(docId, items)}
+        disabled={store.settings.readOnly}
+        title="Delete key"
+      >
         Delete…
       </button>
       <button className={btn} onClick={() => store.clearSelection()} title="Esc">
@@ -157,9 +174,14 @@ function OpenPanelBox({ pane }: { pane: 0 | 1 }) {
     { label: 'Shared stashes', docs: docs.filter((d) => d.doc!.kind === 'stash') },
     { label: 'Characters', docs: docs.filter((d) => d.doc!.kind === 'character') },
   ].filter((g) => g.docs.length);
-  const btn = 'block w-full truncate border border-ink-600 bg-ink-900 px-3 py-1.5 text-left text-[12.5px] text-ink-200 hover:border-gold-500 hover:text-gold-300';
+  const btn =
+    'block w-full truncate border border-ink-600 bg-ink-900 px-3 py-1.5 text-left text-[12.5px] text-ink-200 hover:border-gold-500 hover:text-gold-300';
   return (
-    <div className="bg-[#161616] w-[300px] max-w-full border border-ink-700 p-4" role="group" aria-label={`Open a panel on the ${pane === 0 ? 'left' : 'right'}`}>
+    <div
+      className="bg-[#161616] w-[300px] max-w-full border border-ink-700 p-4"
+      role="group"
+      aria-label={`Open a panel on the ${pane === 0 ? 'left' : 'right'}`}
+    >
       <h3 className="mb-3 text-center font-display text-[12px] uppercase tracking-[.22em]">Open panel</h3>
       <div className="max-h-[50vh] space-y-3 overflow-auto">
         {store.settings.tradeEnabled && (

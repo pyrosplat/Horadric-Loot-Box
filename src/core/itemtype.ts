@@ -43,3 +43,21 @@ export function itemTypeOf(code: string): string {
 
 /** The group a filter type belongs to ("Weapons" for "Swords"…). */
 export const groupOfType = (type: string) => TYPE_GROUPS.find((g) => g.types.includes(type))?.group ?? 'Other';
+
+/** Base tier of an item as the game's filter names it: None (charms, jewelry, runes…), Normal, Exceptional or Elite. */
+export const TIERS = ['None', 'Normal', 'Exceptional', 'Elite'] as const;
+export function tierOf(code: string): (typeof TIERS)[number] {
+  return TIERS[GD.items[code]?.tier ?? 0] ?? 'None';
+}
+
+/** The classes that have items of their own, in the game's filter order. */
+export const HEROES = ['Amazon', 'Assassin', 'Necromancer', 'Sorceress', 'Barbarian', 'Druid', 'Paladin', 'Warlock'] as const;
+const HERO_BY_CODE: Record<string, (typeof HEROES)[number]> = { ama: 'Amazon', ass: 'Assassin', nec: 'Necromancer', sor: 'Sorceress', bar: 'Barbarian', dru: 'Druid', pal: 'Paladin', war: 'Warlock' };
+/** The class an item is made for (Amazon bows, Paladin shields, Druid pelts…), if any. */
+export function heroOf(code: string): (typeof HEROES)[number] | undefined {
+  const def = GD.items[code];
+  return def ? HERO_BY_CODE[GD.types[def.type]?.cls ?? ''] : undefined;
+}
+
+/** Throwing weapons as one filter, like the game's "Throw". */
+export const THROWING_TYPES = ['Throwing Axes', 'Throwing Knives', 'Throwing Potions'];
