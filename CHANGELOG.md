@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.4
+
+- Stackables: Upgrade gems button combines every 3 gems of a grade into 1 of the next, with a Keep slider (0-25) for how many of each grade stay and a confirmation
+- Trade: fixed several listings that failed to import
+
 ## 2.7.3
 
 - Trade: sell magic, rare and crafted items to a buyer; the stats the listing shows are minimums

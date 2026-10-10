@@ -24,6 +24,8 @@ import {
   STACKABLES_LABEL,
   takeFromStack,
   isBoardStackable,
+  planGemUpgrade,
+  upgradeGems,
   stackCount,
   withPlacement,
   GRID_SIZE,
@@ -1384,6 +1386,28 @@ export class Store {
       return false;
     }
     if (moved.length > 1) this.toast('info', `Moved ${moved.length} × ${name}.`);
+    this.emit();
+    return true;
+  }
+
+  /** Combines every three gems of a grade in a Stackables tab into one of the next grade, as far as the stacks have room. */
+  upgradeGems(docId: string, tab: number, keep = 1): boolean {
+    if (this.settings.readOnly) return (this.toast('error', 'Read-only mode is on.'), false);
+    const e = this.docs.get(docId);
+    const d = e?.doc;
+    if (!e || d?.kind !== 'stash') return false;
+    const plan = planGemUpgrade(d, tab, keep);
+    const name = (c: string) => GD.items[c]?.name ?? c;
+    if (!plan.made.length) {
+      this.toast('info', plan.blocked.length ? `Nothing to upgrade: the next stacks are full (${plan.blocked.map((b) => name(b.to)).join(', ')}).` : `Nothing to upgrade: a grade needs at least ${keep + 3} gems (${keep} always stay).`);
+      return false;
+    }
+    this.snapshot('upgrade gems', [docId]);
+    const done = upgradeGems(d, tab, keep);
+    e.dirty = true;
+    const total = done.made.reduce((n, m) => n + m.count, 0);
+    const full = done.blocked.length ? ` ${done.blocked.length} grade${done.blocked.length === 1 ? ' was' : 's were'} left because the next stack is full.` : '';
+    this.toast('success', `Upgraded gems: ${total} new gem${total === 1 ? '' : 's'} made.${full} Undo with Ctrl+Z; nothing is written until you save.`);
     this.emit();
     return true;
   }

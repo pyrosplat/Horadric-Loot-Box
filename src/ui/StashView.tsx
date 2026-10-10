@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { arrangeStackables, GD, gridDims, STACKABLE_SLOTS, STACKABLES_COLS, STACKABLES_LABEL, STACKABLES_ROWS, StashTabType, tabIsEditable, type D2Item, type D2SharedStash } from '../core';
+import { arrangeStackables, planGemUpgrade, GD, gridDims, STACKABLE_SLOTS, STACKABLES_COLS, STACKABLES_LABEL, STACKABLES_ROWS, StashTabType, tabIsEditable, type D2Item, type D2SharedStash } from '../core';
 import { ItemTile } from './ItemTile';
 import { desc, itemKey } from '../state/store';
 import { Badge } from './CharacterView';
@@ -200,7 +200,85 @@ function StackBoardView({ docId, pane, tab, items }: { docId: string; pane: 0 | 
           ))}
         </div>
       )}
+      {canDrag && <UpgradeGemsButton docId={docId} tab={tab} />}
       <p className="text-[11px] text-ink-500" style={{ maxWidth: Math.max(size.cols * cell + 8, 300) }}>Drop runes, gems, keys and other stackables here to add them to their stack (99 max). Drag one out to take a single item.</p>
+    </div>
+  );
+}
+
+const KEEP_KEY = 'hlb.gemKeep';
+const readKeep = () => {
+  try {
+    const n = Number(localStorage.getItem(KEEP_KEY));
+    return localStorage.getItem(KEEP_KEY) !== null && n >= 0 && n <= 25 ? Math.round(n) : 1;
+  } catch {
+    return 1;
+  }
+};
+
+/** Combines every three gems of one grade into one of the next, in this Stackables tab, keeping some of each grade. */
+function UpgradeGemsButton({ docId, tab }: { docId: string; tab: number }) {
+  const store = useStore();
+  const [keep, setKeep] = useState(readKeep);
+  const [confirming, setConfirming] = useState(false);
+  const doc = store.docs.get(docId)?.doc;
+  const plan = doc?.kind === 'stash' ? planGemUpgrade(doc, tab, keep) : undefined;
+  const made = plan?.made.reduce((n, m) => n + m.count, 0) ?? 0;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={() => (made ? setConfirming(true) : store.upgradeGems(docId, tab, keep))}
+        className={`rounded border px-2.5 py-1 text-[12px] transition ${made ? 'border-gold-500 bg-gold-600/15 text-gold-300 hover:bg-gold-600/25' : 'border-ink-600 bg-ink-900 text-ink-500'}`}
+        title="Combine every 3 gems of the same grade into 1 of the next grade (like the Horadric Cube), lowest grade first. A grade is skipped when the next stack is full (99)."
+      >
+        Upgrade gems{made ? ` (+${made})` : ''}
+      </button>
+      <label className="flex items-center gap-2 text-[12px] text-ink-300" title="Gems of each grade that always stay. A grade with this many or fewer isn't upgraded (0 to 25).">
+        Keep
+        <input
+          type="range"
+          min={0}
+          max={25}
+          step={1}
+          value={keep}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            setKeep(n);
+            try {
+              localStorage.setItem(KEEP_KEY, String(n));
+            } catch {
+              /* remembering it is optional */
+            }
+          }}
+          className="w-32 accent-[#c7a04a]"
+        />
+        <span className="w-4 text-gold-300">{keep}</span>
+        <span className="text-ink-500">of each grade</span>
+      </label>
+      {confirming && (
+        <div className="basis-full max-w-[500px] rounded border border-gold-500/60 bg-ink-900 p-3 text-[12px] text-ink-200" role="alertdialog" aria-label="Confirm gem upgrade">
+          <div className="mb-1 font-semibold text-gold-300">Upgrade gems?</div>
+          <p>
+            Makes {made} new gem{made === 1 ? '' : 's'} and keeps {keep} of each grade. Keep a few of each grade for crafting.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className="rounded border border-gold-500 bg-gold-600/25 px-2.5 py-1 text-gold-200 hover:bg-gold-600/40"
+              onClick={() => {
+                setConfirming(false);
+                store.upgradeGems(docId, tab, keep);
+              }}
+            >
+              Upgrade
+            </button>
+            <button type="button" className="rounded border border-ink-600 px-2.5 py-1 text-ink-300 hover:bg-ink-800" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

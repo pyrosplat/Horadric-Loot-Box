@@ -1,5 +1,7 @@
 import { StashTabType, type D2SharedStash } from './d2i';
-import { ItemMode, StorePage, withNewId, withPlacement, withStackSize, type D2Item } from './item';
+import { GD } from './gamedata';
+import { GEM_CODES } from './collection';
+import { createCompactItem, ItemMode, StorePage, withNewId, withPlacement, withStackSize, type D2Item } from './item';
 
 /**
  * The Reign of the Warlock stackables stash tab on one board, ten columns wide, with one slot per stackable item
@@ -150,4 +152,76 @@ export function takeFromStack(stash: D2SharedStash, stackItem: D2Item): D2Item {
 /** True when the item lives in a Stackables tab of this stash. */
 export function inStackablesTab(stash: D2SharedStash, item: D2Item): boolean {
   return stash.tabs.some((t) => t.type === StashTabType.Advanced && t.items.includes(item));
+}
+
+
+/** Each gem type's grades in order, Chipped to Perfect. */
+export function gemChains(): string[][] {
+  const byType = new Map<string, string[]>();
+  for (const code of GEM_CODES) {
+    const t = GD.items[code].type;
+    byType.set(t, [...(byType.get(t) ?? []), code]);
+  }
+  return [...byType.values()];
+}
+
+export interface GemUpgrade {
+  /** Gems made, by the code of the new gem. */
+  made: { from: string; to: string; count: number }[];
+  /** Grades with three or more gems that couldn't upgrade because the next stack is full. */
+  blocked: { from: string; to: string }[];
+}
+
+const stackTotal = (t: { items: D2Item[] }, code: string) => t.items.filter((i) => i.code === code).reduce((n, i) => n + stackCount(i), 0);
+
+/** Sets a stack's count (creating, shrinking or removing it). Mutates the tab. */
+export function setStack(stash: D2SharedStash, tab: number, code: string, n: number): void {
+  const t = stash.tabs[tab];
+  const at = t.items.findIndex((i) => i.code === code);
+  if (n <= 0) {
+    t.items = t.items.filter((i) => i.code !== code);
+    return;
+  }
+  if (at >= 0) {
+    const first = t.items[at];
+    t.items = t.items.filter((i) => i === first || i.code !== code);
+    t.items[t.items.indexOf(first)] = withStackSize(first, n);
+    return;
+  }
+  const fresh = withPlacement(createCompactItem(code, t.version), { mode: ItemMode.Stored, page: StorePage.Stash, x: 0, y: 0, bodyLoc: 0 });
+  t.items.push(withStackSize(fresh, n));
+}
+
+/** What upgrading the tab's gems would do, without changing anything. */
+export function planGemUpgrade(stash: D2SharedStash, tab: number, keep = 1): GemUpgrade {
+  const t = stash.tabs[tab];
+  const out: GemUpgrade = { made: [], blocked: [] };
+  if (!t || t.type !== StashTabType.Advanced) return out;
+  for (const chain of gemChains()) {
+    const have = chain.map((c) => stackTotal(t, c));
+    for (let i = 0; i < chain.length - 1; i++) {
+      const sets = Math.max(0, Math.floor((have[i] - keep) / 3)); // `keep` of each grade stay
+      const k = Math.min(sets, STACK_MAX - have[i + 1]);
+      if (k < sets) out.blocked.push({ from: chain[i], to: chain[i + 1] });
+      if (k <= 0) continue;
+      have[i] -= 3 * k;
+      have[i + 1] += k;
+      out.made.push({ from: chain[i], to: chain[i + 1], count: k });
+    }
+  }
+  return out;
+}
+
+/**
+ * Combines every three gems of one grade into one of the next, lowest grade first so the new gems can combine
+ * again, always keeping `keep` of every grade (keep 1: 10 Chipped → 3 Flawed + 1 Chipped; a grade with `keep` or fewer gems isn't touched). A grade whose next stack is full (99) is left as it is. Mutates the stash.
+ */
+export function upgradeGems(stash: D2SharedStash, tab: number, keep = 1): GemUpgrade {
+  const plan = planGemUpgrade(stash, tab, keep);
+  const t = stash.tabs[tab];
+  for (const m of plan.made) {
+    setStack(stash, tab, m.from, stackTotal(t, m.from) - 3 * m.count);
+    setStack(stash, tab, m.to, stackTotal(t, m.to) + m.count);
+  }
+  return plan;
 }

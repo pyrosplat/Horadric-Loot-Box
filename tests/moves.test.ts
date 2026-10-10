@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import fs from 'node:fs';
-import { GD, ItemMode, Quality, canEquip, collectHeld, parseCharacter, parseStash, serializeVerified, type CollectionKind, type D2Character, type D2Item, type D2SharedStash } from '../src/core';
+import { GD, ItemMode, gemChains, setStack, Quality, canEquip, collectHeld, parseCharacter, parseStash, serializeVerified, type CollectionKind, type D2Character, type D2Item, type D2SharedStash } from '../src/core';
 import type { Platform } from '../src/platform';
 import { Store } from '../src/state/store';
 
@@ -176,6 +176,63 @@ describe('stackables tab', () => {
     const sword = modern().tabs[0].items[0];
     expect(store.check(sword, 't/ModernSharedStashSoftCoreV2.d2i', { docId: 't/ModernSharedStashSoftCoreV2.d2i', area: 'stackables', tab: stackTab() }).ok).toBe(false);
     roundTrip(modern());
+  });
+});
+
+describe('upgrade gems', () => {
+  const FILE = 't/ModernSharedStashSoftCoreV2.d2i';
+  const stash = () => store.docs.get(FILE)!.doc as D2SharedStash;
+  const tab = () => stash().tabs.findIndex((t) => t.type === 1);
+  const count = (code: string) => stash().tabs[tab()].items.filter((i) => i.code === code).reduce((n, i) => n + (i.advancedStackSize ?? 1), 0);
+  const chain = gemChains()[0];
+  const put = (grades: number[]) => chain.forEach((c, i) => setStack(stash(), tab(), c, grades[i] ?? 0));
+  const have = () => chain.map(count);
+
+  test('10 chipped make 3 flawed, which keep one back: 1 chipped, 1 flawed, 1 standard when the standard stack had 2', () => {
+    expect(chain).toHaveLength(5);
+    put([10, 0, 2, 0, 0]);
+    expect(store.upgradeGems(FILE, tab())).toBe(true);
+    // 10 -> keep 1, 9 make 3 flawed; 3 flawed -> keep 1, 2 can't make a set: no standard from them
+    expect(have()).toEqual([1, 3, 2, 0, 0]);
+    const again = roundTrip(stash()) as D2SharedStash;
+    expect(again.tabs[tab()].items.find((i) => i.code === chain[1])!.advancedStackSize).toBe(3);
+    store.undo();
+    expect(have()).toEqual([10, 0, 2, 0, 0]);
+  });
+
+  test('exactly 3 of a grade stay; a lone set is never used up', () => {
+    put([3, 0, 0, 0, 0]);
+    expect(store.upgradeGems(FILE, tab())).toBe(false);
+    expect(have()).toEqual([3, 0, 0, 0, 0]);
+    put([4, 0, 0, 0, 0]);
+    expect(store.upgradeGems(FILE, tab())).toBe(true);
+    expect(have()).toEqual([1, 1, 0, 0, 0]);
+  });
+
+  test('the keep number: a grade with that many or fewer is left alone', () => {
+    put([6, 0, 0, 0, 0]);
+    expect(store.upgradeGems(FILE, tab(), 3)).toBe(true);
+    expect(have()).toEqual([3, 1, 0, 0, 0]);
+    put([3, 0, 0, 0, 0]);
+    expect(store.upgradeGems(FILE, tab(), 3)).toBe(false);
+    put([13, 0, 0, 0, 0]);
+    store.upgradeGems(FILE, tab(), 10);
+    expect(have()).toEqual([10, 1, 0, 0, 0]);
+    put([30, 0, 0, 0, 0]);
+    store.upgradeGems(FILE, tab(), 25);
+    expect(have()).toEqual([27, 1, 0, 0, 0]);
+    put([3, 0, 0, 0, 0]);
+    store.upgradeGems(FILE, tab(), 0);
+    expect(have()).toEqual([0, 1, 0, 0, 0]);
+  });
+
+  test('a full next stack blocks the upgrade', () => {
+    put([0, 0, 0, 9, 99]);
+    expect(store.upgradeGems(FILE, tab())).toBe(false);
+    expect(have()).toEqual([0, 0, 0, 9, 99]);
+    put([0, 0, 0, 10, 98]);
+    store.upgradeGems(FILE, tab());
+    expect(have()).toEqual([0, 0, 0, 7, 99]);
   });
 });
 
