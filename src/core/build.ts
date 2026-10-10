@@ -499,10 +499,10 @@ export function buildableBases(): { code: string; name: string; tier: string; so
  * The bases the Trade panel offers: elite weapons and armor that take sockets and fit at least one runeword
  * (no boots, gloves or belts, no javelins or throwing weapons, no arrows).
  */
-export function runewordBases(): ReturnType<typeof buildableBases> {
+export function runewordBases(allTiers = false): ReturnType<typeof buildableBases> {
   const rwTypes = [...new Set(GD.runewords.filter((r) => r.complete).flatMap((r) => r.itypes))];
   return buildableBases().filter(
-    (b) => b.tier === 'Elite' && b.sockets > 0 && !['boot', 'glov', 'belt'].some((t) => isType(b.code, t)) && rwTypes.some((t) => isType(b.code, t)),
+    (b) => (allTiers || b.tier === 'Elite') && b.sockets > 0 && !['boot', 'glov', 'belt'].some((t) => isType(b.code, t)) && rwTypes.some((t) => isType(b.code, t)),
   );
 }
 

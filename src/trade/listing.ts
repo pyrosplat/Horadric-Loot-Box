@@ -257,7 +257,7 @@ function allCandidates(): Candidate[] {
       const bare = (kind === 'unique' ? GD.uniques[t.id] : GD.setItems[t.id]).name;
       out.push({ kind, ref: t.id, names: [norm(bare)], item: undefined as never });
     }
-  for (const b of runewordBases()) out.push({ kind: 'base', ref: b.code, names: [norm(b.name)], item: undefined as never });
+  for (const b of runewordBases(true)) out.push({ kind: 'base', ref: b.code, names: [norm(b.name)], item: undefined as never });
   for (const rw of buildableRunewords()) out.push({ kind: 'runeword', ref: rw.row, names: [norm(rw.name)], item: undefined as never });
   // whole sets: Traderie lists a complete set under the set's name
   const setKeys = [...new Set(Object.values(GD.setItems).map((si) => si.setKey))];
@@ -495,7 +495,7 @@ function readRolls(
 function templateDefense(kind: TemplateKind, id: number, lines: string[], rolls: Rolls, ethereal: boolean, warnings: string[], errors: string[]): number | undefined {
   const range = templateDefenseRange(kind, id);
   if (!range) return undefined;
-  const line = lines.map(norm).find((l) => /^\d+ defense$|^defense:? \d+$/.test(l));
+  const line = lines.map(norm).find((l) => /^\+?\d+ defense$|^defense:? \d+$/.test(l));
   if (!line) {
     const d = randomRoll(range.lo, range.hi);
     warnings.push(`Couldn't read the defense; rolled ${d} at random (${range.lo}–${range.hi}).`);
@@ -838,8 +838,9 @@ function solveAffixes(code: string, quality: AffixQuality, stats: { text: string
   for (let limit = 0; limit <= maxTotal && !found && nodes <= 200000; limit++) dfs(start, limit);
   if (!found) {
     const reachable = new Set(sources.flatMap((s) => s.lines.map((l) => l.at)).concat(start.flatMap((s) => s.lines.map((l) => l.at))));
-    const missing = need.filter((i) => !reachable.has(i)).map((i) => `"${stats[i].text}"`);
-    return { error: missing.length ? `No ${quality} ${GD.items[code].name} can have ${missing.join(', ')}.` : `These stats don't add up to a possible ${quality} ${GD.items[code].name}. The listing may be edited or misread.` };
+    const unreached = need.filter((i) => !reachable.has(i));
+    const missing = unreached.map((i) => `"${stats[i].text}"`);
+    return { unreached, error: missing.length ? `No ${quality} ${GD.items[code].name} can have ${missing.join(', ')}.` : `These stats don't add up to a possible ${quality} ${GD.items[code].name}. The listing may be edited or misread.` };
   }
   const pick = (s: Source): ModPick => ({ row: s.row, values: found!.values.get(s)! });
   return {
@@ -1013,6 +1014,17 @@ function readAffixListing(title: string | undefined, lines: string[], titled: bo
   if ('error' in solved && !tagged && quality === 'magic') {
     const rare = solveAffixes(code, 'rare', stats);
     if (!('error' in rare)) (solved = rare), (q = 'rare');
+  }
+  // lines nothing matches (the seller's name and rating, a stat the OCR garbled) are left out rather than failing the listing
+  if ('error' in solved && solved.unreached?.length) {
+    const gone = solved.unreached;
+    if (stats.some((x, i) => x.digits && !gone.includes(i))) {
+      const again = solveAffixes(code, q, stats.map((x, i) => (gone.includes(i) ? { ...x, digits: false } : x)));
+      if (!('error' in again)) {
+        warnings.push(`Couldn't match ${gone.map((i) => `"${stats[i].text}"`).join(', ')} to a stat; left out.`);
+        solved = again;
+      }
+    }
   }
   if ('error' in solved) return { errors: [...errors, solved.error!], warnings };
   const label = `${q === 'magic' ? 'Magic' : 'Rare'} ${def.name}`;
@@ -1392,7 +1404,10 @@ function readListingItem(rawLines: string[], now: Date): Omit<ListingResult, 'di
   // uniques and sets that share a name (Rainbow Facets) or look alike: the one whose stats fit the listing best
   // a unique or set item's listing also names its base ("Harlequin Crest" / "Shako"): the unique wins
   const named = matches.some(([c, sc]) => (c.kind === 'unique' || c.kind === 'set') && sc >= 0.9);
-  const pool = named ? matches.filter(([c]) => c.kind !== 'base') : matches;
+  // ("Rainbow Facet: Cold Death" is the facet, not the runeword Death)
+  const pool = named
+    ? matches.filter(([c]) => c.kind !== 'base' && ((c.kind !== 'runeword' && c.kind !== 'fullset') || (title && similarity(norm(title), c.names[0]) >= 0.85)))
+    : matches;
   const top = pool[0][1];
   const close = pool.filter((m) => m[1] >= top - 0.02);
   let best: { item: ListingItem; warn: string[]; err: string[]; score: number } | undefined;

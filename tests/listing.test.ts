@@ -386,6 +386,27 @@ describe('real Traderie screenshots (OCR text from the app)', () => {
     expect(readListing(['1 X Ring', 'Reign Of The Warlock - PC - Ladder - Softcore - Rare', '+300% Enhanced Damage', 'Trading For', '1 X Ist Rune', 'in 5 minutes']).errors[0]).toMatch(/No rare Ring can have/);
   });
 
+  test('seller lines and a garbled stat are left out of a rare item; a plain Mage Plate and a Rainbow Facet read right', () => {
+    const row = (side: 'prefix' | 'suffix', name: string) => affixRows(side, 'rin', 'rare').find((i) => GD.affixes[side][i].name === name)!;
+    const ring = createAffixItem('rin', { quality: 'rare', affixes: [{ side: 'prefix', row: row('prefix', 'Garnet'), values: [25] }, { side: 'suffix', row: row('suffix', 'of the Leech'), values: [3] }] });
+    const lines = describeItem(ring).lines.filter((l) => l.kind === 'mod').map((l) => l.text);
+    const r = readListing(['1 X Ring', 'Reign Of The Warlock - PC - Ladder - Softcore - Rare', ...lines, '+36 To d=', 'Gpro922477', '(3)', 'Trading For', '1 X Ist Rune', 'in 5 minutes']);
+    expect(r.errors).toEqual([]);
+    expect(r.item).toMatchObject({ kind: 'rare', code: 'rin' });
+    expect(r.warnings.join(' ')).toMatch(/left out/);
+    // a Normal Mage Plate (an Exceptional base) is a base with its sockets
+    const plate = readListing(['1 X Mage Plate', 'Reign Of The Warlock - PC - Ladder - Softcore - Normal', 'Socketed (3)', 'Gpro922477', '(3)', 'Trading For', '1 X Pul Rune', 'in 1 minute']);
+    expect(plate.errors).toEqual([]);
+    expect(plate.item).toMatchObject({ kind: 'base', name: 'Mage Plate', sockets: 3 });
+    // Traderie writes a unique's total defense as "+140 Defense"
+    const shako = readListing(['1 X Harlequin Crest', 'Reign Of The Warlock - PC - Ladder - Softcore', '+140 Defense', 'Trading For', '1 X Ist Rune', 'in 5 minutes']);
+    expect(shako.warnings).toEqual([]);
+    expect(shako.item).toMatchObject({ kind: 'unique', defense: 140 });
+    // "Rainbow Facet: Cold Death" is the facet, not the runeword Death
+    const facet = readListing(['1 X Rainbow Facet: Cold Death', 'Reign Of The Warlock - PC - Ladder - Softcore', '+4% To Cold Skill Damage', '-4% To Enemy Cold Resistance', 'Trading For', '1 X Ist Rune', 'in 1 minute']);
+    expect(facet.item).toMatchObject({ kind: 'unique' });
+  });
+
   test('runewords: the runes\u2019 own bonuses and a superior base are part of the listing\u2019s numbers', () => {
     // Cure in an ethereal superior Spired Helm: 108% = 100% Cure + 8% superior; 52% Poison Resist = 22% Cure + Tal's 30%
     const r = read('cure-runeword-superior');

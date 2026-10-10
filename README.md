@@ -38,6 +38,8 @@ Trade in single player for items listed on Traderie, at the listing's price. Tur
 
 [![Offline trading demo (click to play)](docs/screenshots/trade.png)](docs/videos/trade.mp4)
 
+Watch how it works: [Offline trading on YouTube](https://www.youtube.com/watch?v=K2WiSztsOaw).
+
 - **Buy:** paste or drop a Traderie listing, drag what it asks for into **Your offer**, then **Accept trade**.
 - **Sell:** switch to **Sell**, import the buyer's listing, drag in what they want, then **Sell**.
 - What you get lands in **Received**; move it into a stash, character or vault and save.
