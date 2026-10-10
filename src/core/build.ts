@@ -576,7 +576,7 @@ export function classSkillsFor(code: string, itemLevel = defaultLevel(code)): { 
 }
 
 /** The stats of a picked mod row, checking each value is in its range. */
-function modStats(pick: ModPick, mods: PropDef[], what: string): ItemStat[] {
+export function modStats(pick: ModPick, mods: PropDef[], what: string): ItemStat[] {
   const out: ItemStat[] = [];
   mods.forEach(([code, param, min, max], i) => {
     const lo = Math.min(min, max), hi = Math.max(min, max);
@@ -687,8 +687,8 @@ export function createRunewordItem(row: number, code: string, rolls: Rolls = {},
 
 // ---------------------------------------------------------------- uber keys, organs and other uber items
 
-/** Uber keys, organs, the Token of Absolution and its essences, and the Worldstone Shards. */
-export const UBER_CODES = ['pk1', 'pk2', 'pk3', 'dhn', 'bey', 'mbr', 'toa', 'tes', 'ceh', 'bet', 'fed', 'xa1', 'xa2', 'xa3', 'xa4', 'xa5'];
+/** Uber keys, organs, the Token of Absolution and its essences, the Worldstone Shards, and the Ancients' items. */
+export const UBER_CODES = ['pk1', 'pk2', 'pk3', 'dhn', 'bey', 'mbr', 'toa', 'tes', 'ceh', 'bet', 'fed', 'xa1', 'xa2', 'xa3', 'xa4', 'xa5', 'ua1', 'ua2', 'ua3', 'ua4', 'ua5'];
 export const isUberCode = (code: string) => UBER_CODES.includes(code);
 
 /**

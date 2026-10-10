@@ -144,6 +144,63 @@ describe('reading uniques and set items', () => {
     expect(wantMatches(want[0].item, mk({ [g2.key]: 1, [`${g2.key}.1`]: 55 }))).toBe(false); // gold find instead
   });
 
+  test('a rare ring sold to a buyer: the shown stats are minimums, quality and base must match', async () => {
+    const { titleWant } = await import('../src/trade/listing');
+    const { wantMatches } = await import('../src/core');
+    const lines = ['1 X Ring', 'Reign Of The Warlock - Ladder - Softcore - Orange - PC - Rare', '+103 To Attack Rating', '6% Life Stolen Per Hit', '+4 To Strength', '+25 To Life', '+8ToAllResistances', '6% Better Chance Of Getting Magic Items', 'Trading For', '1 X Lo Rune', 'in 55 seconds'];
+    const it = readListing(lines).item as AffixListing;
+    const want = titleWant(it) as { item: Parameters<typeof wantMatches>[0] }[];
+    expect(typeof want).toBe('object');
+    const same = createAffixItem('rin', { quality: 'rare', affixes: it.affixes });
+    expect(wantMatches(want[0].item, same)).toBe(true);
+    // fewer stats, another quality or another base doesn't count
+    const fewer = createAffixItem('rin', { quality: 'rare', affixes: it.affixes.slice(0, 3) });
+    expect(wantMatches(want[0].item, fewer)).toBe(false);
+    const magic = createAffixItem('rin', { quality: 'magic', affixes: it.affixes.slice(0, 1) });
+    expect(wantMatches(want[0].item, magic)).toBe(false);
+    const amulet = createAffixItem('amu', { quality: 'rare', affixes: affixRows('prefix', 'amu', 'rare').slice(0, 1).map((row) => ({ side: 'prefix' as const, row, values: [] })) });
+    expect(wantMatches(want[0].item, amulet)).toBe(false);
+  });
+
+  test('key sets, the Ancients\u2019 items and a charm with the stats it has to have, as items and as prices', async () => {
+    const { titleWant } = await import('../src/trade/listing');
+    const { wantMatches, createAffixItem, createUberItem } = await import('../src/core');
+    const tags = 'Reign Of The Warlock - Ladder - Softcore - PC';
+    // a key set: three each of the three keys, per set
+    const ks = readListing(['3 X 3x3 Key Set', tags, 'Trading For', '1 X Lo Rune', '1 X Mal Rune', 'High Rune Value: 1.35', '42 minutes ago']);
+    expect(ks.errors).toEqual([]);
+    expect(ks.item).toMatchObject({ kind: 'keyset', quantity: 3 });
+    expect(askText(ks.ask ?? [])).toBe('1× Lo Rune + 1× Mal Rune');
+    expect((titleWant(ks.item!) as { code: string; qty: number }[]).map((a) => `${a.code}:${a.qty}`)).toEqual(['pk1:9', 'pk2:9', 'pk3:9']);
+    const asked = readListing(['1 X Mal Rune', tags, 'Trading For', '2 X 3x3 Key Set OR', '3 X Pul Rune', 'High Rune Value: 0', '2 hours ago']);
+    expect(asked.errors).toEqual([]);
+    expect(asked.ask?.map((o) => o.map((a) => `${a.code}:${a.qty}`).join('+'))).toEqual(['pk1:6+pk2:6+pk3:6', 'r21:3']);
+    // three Random Minor Keys: any three of the keys, in any mix, and nothing else
+    const { offerMatches, createUberItem: key } = await import('../src/core');
+    const minor = readListing(['1 X Mal Rune', tags, 'Trading For', '3 X Random Minor Key', 'High Rune Value: 0', '2 hours ago']).ask![0];
+    expect(offerMatches(minor, [key('pk1'), key('pk2'), key('pk3')])).toBe(true);
+    expect(offerMatches(minor, [key('pk1'), key('pk1'), key('pk1')])).toBe(true);
+    expect(offerMatches(minor, [key('pk1'), key('pk2')])).toBe(false);
+    expect(offerMatches(minor, [key('pk1'), key('pk2'), key('dhn')])).toBe(false);
+    // Worusk's End and Korlic's Pain are paid like any uber item
+    const anc = readListing(['1 X Mal Rune', tags, 'Trading For', "1 X Worusk's End OR", "1 X Korlic's Pain", 'High Rune Value: 0 or 0', '1 minute ago']);
+    expect(anc.errors).toEqual([]);
+    expect(anc.ask?.map((o) => o.map((a) => `${a.code}:${a.qty}`).join('+'))).toEqual(['ua5:1', 'ua2:1']);
+    expect(createUberItem('ua2').code).toBe('ua2');
+    // a charm in a price: it needs the stats shown; extras on it don't matter
+    const ch = readListing(['1 X Mal Rune', tags, 'Trading For', '1 X Grand Charm', '+1 To Chaos Skills (Warlock Only)', 'High Rune Value: 0', '3 hours ago']);
+    expect(ch.errors).toEqual([]);
+    const need = ch.ask![0][0].item!;
+    expect(need).toMatchObject({ kind: 'magic', code: 'cm3' });
+    const own = readListing(['1 X Grand Charm', `${tags} - Magic`, '+1 To Chaos Skills (Warlock Only)', 'Trading For', '1 X Ist Rune', 'in 5 minutes']).item as AffixListing;
+    const only = createAffixItem('cm3', { quality: 'magic', affixes: own.affixes });
+    expect(wantMatches(need, only)).toBe(true);
+    const withExtra = createAffixItem('cm3', { quality: 'magic', affixes: [...own.affixes, ...affixRows('suffix', 'cm3').filter(() => !own.affixes.some((a) => a.side === 'suffix')).slice(0, 1).map((row) => ({ side: 'suffix' as const, row, values: [] }))] });
+    expect(wantMatches(need, withExtra)).toBe(true);
+    const other = createAffixItem('cm3', { quality: 'magic', affixes: affixRows('suffix', 'cm3').slice(0, 1).map((row) => ({ side: 'suffix' as const, row, values: [] })) });
+    expect(wantMatches(need, other)).toBe(false);
+  });
+
   test('the Hellfire Torch class and the Rainbow Facet variant come from the stats', () => {
     const cls = rollSlots('unique', idOf('unique', 'Hellfire Torch')).find((s) => s.kind === 'class')!;
     const torch = readListing(listing('unique', 'Hellfire Torch', { [cls.key]: 1 }));
@@ -490,13 +547,15 @@ describe('the price: what the listing is trading for', () => {
     expect(readAsk(['1 X Grand Bargain']).problems[0]).toMatch(/doesn't know that item/);
     // an option that can't be paid is left out when another one can: pay the Pul
     const pul = readAsk(['1 X Pul Rune OR', '1 X Random Minor Key']);
-    expect([askText(pul.options), pul.problems]).toEqual(['1× Pul Rune', []]);
-    expect(pul.skipped).toEqual(['Left out the "1 X Random Minor Key" option: the app doesn\'t know that item.']);
-    expect(askText(readAsk(['1 X Random Minor Key OR', '1 X Pul Rune']).options)).toBe('1× Pul Rune');
+    const bad = readAsk(['1 X Pul Rune OR', '1 X Mystery Thing']);
+    expect([askText(bad.options), bad.problems]).toEqual(['1× Pul Rune', []]);
+    expect(bad.skipped).toEqual(['Left out the "1 X Mystery Thing" option: the app doesn\'t know that item.']);
+    // a Random Minor Key is any one of the Terror, Hate and Destruction keys
+    expect(pul.options).toEqual([[{ code: 'r21', qty: 1, name: 'Pul Rune' }], [{ code: '', qty: 1, name: 'Random Minor Key', anyOf: ['pk1', 'pk2', 'pk3'] }]]);
     const r2 = readListing(['1 X Eye Grand Charm', 'Reign Of The Warlock - Ladder - PC - Softcore', '+1 To Elemental Skills (Druid Only)', 'Trading For', '1 X Pul Rune OR', '1 X Random Minor Key', '1 minute ago']);
     expect(r2.errors).toEqual([]);
-    expect(askText(r2.ask ?? [])).toBe('1× Pul Rune');
-    expect(r2.warnings.join(' ')).toMatch(/Left out the "1 X Random Minor Key" option/);
+    expect(askText(r2.ask ?? [])).toBe('1× Pul Rune or 1× Random Minor Key');
+    expect(r2.warnings).toEqual([]);
     const r = readListing(['1 X Ber Rune', 'Reign Of The Warlock · PC · Ladder · Softcore', 'Trading For', 'Make an Offer', 'in 2 minutes']);
     expect(r.errors[0]).toMatch(/asks for offers/);
   });

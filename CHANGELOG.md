@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.3
+
+- Trade: sell magic, rare and crafted items to a buyer; the stats the listing shows are minimums
+- Trade: 3x3 Key Sets (3 each of the Terror, Hate and Destruction keys), as an item or a price
+- Trade: Random Minor Keys in a price can be paid with any mix of the three keys
+- Trade: Worusk's End, Korlic's Pain and the other Ancients' items can be traded
+- Trade: a charm, jewel, ring or amulet in a price needs the stats it lists; extra stats are fine
+
 ## 2.7.1
 
 - Characters: attack speed (IAS) calculator on the character screen, with frames per animation (FPA) Based on Warren1001's IAS Calculator.

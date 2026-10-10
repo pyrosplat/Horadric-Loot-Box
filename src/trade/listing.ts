@@ -28,6 +28,7 @@ import {
   statByName,
   type AffixPick,
   type ItemStat,
+  modStats,
   type AffixQuality,
   type AffixSide,
   type ItemWant,
@@ -57,6 +58,11 @@ import {
 /** Listings older than this don't count. */
 export const MAX_LISTING_AGE_DAYS = 3;
 
+/** "3x3 Key Set", "3 x 3 x 3 key set": three each of the three keys. */
+const KEY_SET = /3\s*x\s*3(?:\s*x\s*3)?\s*key\s*set/;
+const KEYS = ['pk1', 'pk2', 'pk3'] as const;
+const keysOf = (sets: number): AskItem[] => KEYS.map((code) => ({ code, qty: 3 * sets, name: GD.items[code].name }));
+
 export type Mode = 'softcore' | 'hardcore';
 
 export interface ListingTags {
@@ -71,6 +77,8 @@ export interface ListingTags {
 
 export type ListingItem =
   | { kind: 'rune' | 'gem' | 'uber'; code: string; name: string; quantity: number }
+  /** "3x3 Key Set": three each of the Keys of Terror, Hate and Destruction, per set. */
+  | { kind: 'keyset'; name: string; quantity: number }
   /** `shown`: the rolls the listing actually shows (the others are random). */
   | { kind: TemplateKind; id: number; name: string; rolls: Rolls; ethereal: boolean; defense?: number; shown?: string[] }
   /** A runeword ("1 X Call To Arms", "Crystal Sword" in the tags): the runeword, its base and its rolls. */
@@ -1121,6 +1129,21 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
     if (cur.items.length || cur.bad.length) opts.push(cur);
     cur = { items: [], bad: [] };
   };
+  // a base the price names ("1 X Grand Charm") may be followed by the stats it has to have; they come on the lines after it
+  let pend: { entry: AskItem; lines: string[] } | undefined;
+  const settle = () => {
+    const pd = pend;
+    pend = undefined;
+    if (!pd || pd.entry.item?.kind !== 'base') return;
+    const code = pd.entry.item.code;
+    const charm = isType(code, 'char');
+    if (!charm && !pd.lines.length) return; // a plain base
+    const r = readAffixListing(GD.items[code].name, [`Reign Of The Warlock - Ladder - Softcore - PC${charm ? ' - Magic' : ''}`, ...pd.lines], true);
+    const why = !r?.item || r.errors.length ? r?.errors[0] ?? "the stats can't be read" : undefined;
+    const w = r?.item && !why ? titleWant(r.item) : undefined;
+    if (!w || typeof w === 'string') return void cur.bad.push(`${pd.entry.name}: ${why ?? w}`);
+    Object.assign(pd.entry, { name: `${r!.item!.name}${pd.lines.length ? `: ${pd.lines.join(', ')}` : ''}`, item: w[0].item });
+  };
   for (const raw of lines) {
     const l = norm(raw).replace(/[)\]](?=[a-z])/g, 'j'); // OCR reads a J as ")": "9X)ah Rune"
     // "… 2 more": the listing hides the rest of the last option, so that option can't be paid as shown
@@ -1132,13 +1155,38 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
       problems.push("The listing asks for offers, not a set price, so there's nothing to pay.");
       continue;
     }
+    // "1 X 3x3 Key Set": three of each key, per set
+    const ks = /(?:^|[^a-z0-9])(\d{1,2}|[il|])\s*x\s*3\s*x\s*3(?:\s*x\s*3)?\s*key\s*set/.exec(l);
+    if (ks) {
+      settle();
+      if (or) close();
+      or = /\bor$/.test(l);
+      const sets = /^\d+$/.test(ks[1]) ? Math.max(1, Number(ks[1])) : 1;
+      for (const k of keysOf(sets)) {
+        const same = cur.items.find((a) => a.code === k.code);
+        if (same) same.qty += k.qty;
+        else cur.items.push(k);
+      }
+      continue;
+    }
+    // "3 X Random Minor Key": that many keys, each one Terror, Hate or Destruction
+    const rk = /(?:^|[^a-z0-9])(\d{1,2}|[il|])\s*x\s*random\s*minor\s*keys?/.exec(l);
+    if (rk) {
+      settle();
+      if (or) close();
+      or = /\bor$/.test(l);
+      cur.items.push({ code: '', qty: /^\d+$/.test(rk[1]) ? Math.max(1, Number(rk[1])) : 1, name: 'Random Minor Key', anyOf: [...KEYS] });
+      continue;
+    }
     // "1 x ist rune", "1xistrune", "£5 1x lo rune or": a count, an x, then the name
     const m = /(?:^|\s|[^a-z0-9])(\d{1,2}|[il|])\s*x\s*([a-z0-9' ]{2,})$/.exec(l.replace(/\s+or$/, ''));
     const endsOr = /\bor$/.test(l);
     if (!m) {
+      if (pend && !/^or$/.test(l)) pend.lines.push(raw.replace(/\s+or$/i, '').trim());
       if (endsOr) or = true;
       continue;
     }
+    settle();
     const want = lettersOnly(m[2]);
     let best: { code: string; name: string; score: number } | undefined;
     for (const p of payable()) for (const k of p.keys) {
@@ -1150,8 +1198,11 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
     const qty = /^\d+$/.test(m[1]) ? Math.max(1, Number(m[1])) : 1; // "l x" is OCR's "1 X"
     if (!best) {
       // an item by name: "1 X Harlequin Crest", "1 X Immortal King" (a whole set)
-      const items = itemsNamed(m[2], qty);
-      if (items) cur.items.push(...items);
+      const items = itemsNamed(m[2], qty) ?? jewelryNamed(m[2], qty);
+      if (items) {
+        cur.items.push(...items);
+        if (items.length === 1 && items[0].item?.kind === 'base' && canHaveAffixes(items[0].item.code)) pend = { entry: items[0], lines: [] };
+      }
       else cur.bad.push(raw.replace(/^[^0-9]*/, '').replace(/\s+or$/i, '').trim());
       continue;
     }
@@ -1159,6 +1210,7 @@ export function readAsk(lines: string[]): { options: AskItem[][]; problems: stri
     if (same) same.qty += qty;
     else cur.items.push({ code: best.code, qty, name: best.name });
   }
+  settle();
   close();
   // an option with something that can't be paid here ("1 X Random Minor Key") is dropped when another option can be
   const good = opts.filter((o) => !o.bad.length);
@@ -1189,6 +1241,13 @@ function itemsNamed(name: string, qty: number): AskItem[] | undefined {
   return undefined;
 }
 
+/** Charms, jewels, rings and amulets a price names ("1 X Grand Charm"): never plain, so the stats that follow say what they need. */
+function jewelryNamed(name: string, qty: number): AskItem[] | undefined {
+  const n = norm(name);
+  const code = GD.itemOrder.find((c) => GD.items[c] && ['char', 'jewl', 'ring', 'amul'].some((t) => isType(c, t)) && canHaveAffixes(c) && similarity(norm(GD.items[c].name), n) >= 0.9);
+  return code ? [{ code: '', qty, name: GD.items[code].name, item: { kind: 'base', code } }] : undefined;
+}
+
 /**
  * What you give when you sell to a buyer's listing: the item it names, with the rolls it shows as minimums
  * (any roll when it shows none), ethereal only when it says so. Or why it can't be sold here.
@@ -1211,15 +1270,28 @@ export function titleWant(it: ListingItem): AskItem[] | string {
       return one({ kind: 'runeword', id: it.row, code: it.code || undefined, ethereal: it.ethereal || undefined, atLeast: atLeast(runewordSlots(it.row), it.rolls, it.shown) });
     case 'base':
       return one({ kind: 'base', code: it.code, sockets: it.socketsShown ? it.sockets : undefined, ethereal: it.ethereal || undefined });
+    case 'keyset':
+      return keysOf(it.quantity);
     case 'fullset':
       return it.pieces.map((p) => ({ code: '', qty: 1, name: p.name, item: { kind: 'set', id: p.id } }));
+    case 'magic':
+    case 'rare':
+    case 'crafted': {
+      // what the listing shows, as minimums: every affix, the crafting recipe and class mod, or a crafted item's exact lines
+      const stats: ItemStat[] = [];
+      for (const a of it.affixes) stats.push(...modStats(a, GD.affixes[a.side][a.row].mods, GD.affixes[a.side][a.row].name));
+      if (it.craft) stats.push(...modStats(it.craft, GD.crafts[it.craft.row].mods, GD.crafts[it.craft.row].name));
+      if (it.auto) stats.push(...modStats(it.auto, GD.automagic[it.auto.row].mods, GD.automagic[it.auto.row].name));
+      if (it.exact) stats.push(...it.exact);
+      return one({ kind: it.kind, code: it.code, name: it.name, sockets: it.sockets || undefined, ethereal: it.ethereal || undefined, atLeast: stats });
+    }
     default:
-      return "Selling magic, rare and crafted items isn't supported yet: there's no way to check their stats against the listing.";
+      return "That item can't be sold here.";
   }
 }
 
 /** Whether the app can make what a price option gives you (a runeword needs its base, which a price doesn't name). */
-export const canReceive = (opt: AskItem[]) => opt.every((a) => !a.item || a.item.kind !== 'runeword');
+export const canReceive = (opt: AskItem[]) => opt.every((a) => !a.anyOf && (!a.item || a.item.kind !== 'runeword'));
 
 /** "1× Ist Rune", "1× Lo Rune or 1× Ohm Rune" */
 export const askText = (options: AskItem[][]) => options.map((o) => (o.length ? o.map((a) => `${a.qty}× ${a.name}`).join(' + ') : 'Free')).join(' or ');
@@ -1259,7 +1331,7 @@ export function readListing(rawLines: string[], price?: string[], now: Date = ne
   const cant = options.filter((o) => !canReceive(o));
   if (cant.length) {
     options = options.filter(canReceive);
-    for (const o of cant) (options.length ? warnings : errors).push(`Left out the "${askText([o])}" option: a runeword can't be made without knowing its base.`);
+    for (const o of cant) (options.length ? warnings : errors).push(`Left out the "${askText([o])}" option: ${o.some((a) => a.anyOf) ? "it doesn't say which key you get." : "a runeword can't be made without knowing its base."}`);
   }
   return { ...r, errors, warnings, direction, want, ask: options.length ? options : undefined };
 }
@@ -1306,6 +1378,7 @@ function readListingItem(rawLines: string[], now: Date): Omit<ListingResult, 'di
   if (!matches.length || matches[0][1] < 0.85) matches = matchName(lines);
   // runewords and whole sets are only ever the title: "+2 To Strength" isn't the runeword Strength
   if (ti >= 0) matches = matches.filter(([c, , at]) => (c.kind !== 'runeword' && c.kind !== 'fullset') || at === ti);
+  if (title && KEY_SET.test(norm(title))) return { tags, item: { kind: 'keyset', name: '3x3 Key Set', quantity: titleQty ?? 1 }, errors, warnings, confidence: 1, age };
   const bad = unsupported(title);
   if (bad) return { tags, errors: [...errors, bad], warnings, confidence: 0, age };
   // magic, rare and crafted items: tagged so, named for a crafting recipe, or titled with a plain base name

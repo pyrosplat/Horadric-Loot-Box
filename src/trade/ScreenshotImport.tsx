@@ -55,9 +55,9 @@ function itemLabel(it: NonNullable<ListingResult['item']>): string {
 const thumbs = new Map<string, D2Item | null>();
 /** A picture for one thing in a price: the rune or gem, or the named item (any rolls). */
 function thumbOf(a: AskItem): D2Item | undefined {
-  if (!a.item) return displayItem(a.code);
+  if (!a.item) return displayItem(a.anyOf ? a.anyOf[0] : a.code);
   const w = a.item;
-  const code = w.kind === 'base' || w.kind === 'runeword' ? w.code : undefined;
+  const code = w.kind === 'unique' || w.kind === 'set' ? undefined : (w as { code: string }).code;
   const key = JSON.stringify([w.kind, 'id' in w ? w.id : '', code ?? '']);
   if (!thumbs.has(key)) {
     try {
@@ -179,10 +179,10 @@ export function ScreenshotImport() {
     const items =
       it.kind === 'fullset'
         ? (state.pieces ?? []).map((p) => ({ kind: 'set' as const, id: p.id, name: p.name, item: p.item }))
-        : state.item && it.kind !== 'rune' && it.kind !== 'gem' && it.kind !== 'uber'
+        : state.item && it.kind !== 'rune' && it.kind !== 'gem' && it.kind !== 'uber' && it.kind !== 'keyset'
           ? [{ kind: it.kind, id: 'id' in it ? it.id : it.kind === 'runeword' ? it.row : GD.items[it.code].index, name: itemLabel(it), item: state.item }]
           : [];
-    const want: [string, number][] = it.kind === 'rune' || it.kind === 'gem' || it.kind === 'uber' ? [[it.code, it.quantity]] : [];
+    const want: [string, number][] = it.kind === 'rune' || it.kind === 'gem' || it.kind === 'uber' ? [[it.code, it.quantity]] : it.kind === 'keyset' ? (['pk1', 'pk2', 'pk3'] as const).map((c) => [c, 3 * it.quantity] as [string, number]) : [];
     const replacing = store.trade.listing;
     const problem = store.tradeSetListing({ name: it.name, mode: state.result.tags.mode, ask: state.result.ask, want, items });
     if (problem) return store.toast('error', problem);

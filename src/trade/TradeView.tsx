@@ -16,6 +16,7 @@ const TRADERIE = 'https://traderie.com/diablo2resurrected';
 const UBER_SHORT: Record<string, string> = {
   pk1: 'Terror', pk2: 'Hate', pk3: 'Destruction', dhn: 'Horn', bey: 'Eye', mbr: 'Brain', toa: 'Token',
   tes: 'Twisted', ceh: 'Charged', bet: 'Burning', fed: 'Festering', xa1: 'West', xa2: 'East', xa3: 'South', xa4: 'Deep', xa5: 'North',
+  ua1: 'Talic', ua2: 'Korlic', ua3: 'Madawc', ua4: 'Bul-Kathos', ua5: 'Worusk',
 };
 /** Tile label colours by quality (magic, set, rare, unique, crafted). */
 const QUALITY_TEXT: Record<number, string> = { 4: 'text-q-magic', 5: 'text-q-set', 6: 'text-q-rare', 7: 'text-q-unique', 8: 'text-q-crafted' };
