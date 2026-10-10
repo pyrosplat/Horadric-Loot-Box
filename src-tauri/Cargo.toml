@@ -1,6 +1,6 @@
 [package]
 name = "horadric-loot-box"
-version = "2.7.0"
+version = "2.7.1"
 description = "Muling tool for Diablo II: Resurrected — Reign of the Warlock"
 edition = "2021"
 license = "MIT"

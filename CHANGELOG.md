@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.7.0
+## 2.7.1
 
 - Characters: attack speed (IAS) calculator on the character screen, with frames per animation (FPA) Based on Warren1001's IAS Calculator.
 - Vault: new Charms tab (small, large, grand, unique), and class items as chips under the filters
