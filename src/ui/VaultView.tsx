@@ -24,11 +24,14 @@ import { GoldBar } from './Gold';
 import { drag, dropDragged, endDrag, startDrag, useStore, countFor } from './context';
 import { QUALITY_TEXT, useTooltip } from './Tooltip';
 
-const FILTERS: { key: string; label: string; test: (q: QualityClass) => boolean }[] = [
-  { key: 'all', label: 'All', test: () => true },
+/** The quality chips: pick one or several (none picked = All). Bases, Sets, Uniques and Runewords are on the Items tab only. */
+const QUALITY_CHIPS: { key: string; label: string; items?: boolean; test: (q: QualityClass) => boolean }[] = [
   { key: 'rare', label: 'Rare/Craft', test: (q) => q === 'rare' || q === 'crafted' || q === 'tempered' },
   { key: 'magic', label: 'Magic', test: (q) => q === 'magic' },
-  { key: 'base', label: 'Bases', test: (q) => q === 'normal' || q === 'superior' || q === 'inferior' },
+  { key: 'base', label: 'Bases', items: true, test: (q) => q === 'normal' || q === 'superior' || q === 'inferior' },
+  { key: 'set', label: 'Sets', items: true, test: (q) => q === 'set' },
+  { key: 'unique', label: 'Uniques', items: true, test: (q) => q === 'unique' },
+  { key: 'runeword', label: 'Runewords', items: true, test: (q) => q === 'runeword' },
 ];
 
 type Tab = 'items' | 'jewels' | 'charms' | CollectionKind;
@@ -78,7 +81,7 @@ const Q_ORDER: QualityClass[] = ['rare', 'crafted', 'tempered', 'magic', 'rune',
 export function VaultView({ docId, vault, pane, query }: { docId: string; vault: Vault; pane: 0 | 1; query: string }) {
   const store = useStore();
   const tip = useTooltip();
-  const [filter, setFilter] = useState('all');
+  const [quals, setQuals] = useState<string[]>([]);
   const [type, setType] = useState('all');
   const [tiers, setTiers] = useState<string[]>([]);
   const [hero, setHero] = useState('all');
@@ -88,13 +91,11 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('items');
-  // the Items list can also list uniques, sets and runewords, so they sort and filter like everything else
-  const [also, setAlso] = useState<QualityClass[]>([]);
 
   const loose = vault.entries.filter((e) => !IN_COLLECTION.has(desc(e.item).qualityClass));
   const jewelCount = loose.filter((e) => isJewel(e.item.code)).length;
   const charmCount = vault.entries.filter((e) => isCharm(e.item.code)).length;
-  const otherCount = loose.filter((e) => !isJewel(e.item.code) && !isCharm(e.item.code)).length;
+  const otherCount = vault.entries.filter((e) => !['rune', 'gem'].includes(desc(e.item).qualityClass) && !isJewel(e.item.code) && !isCharm(e.item.code)).length;
   // Collection tab counts: distinct Chronicle entries found (legacy rows excluded), across the whole account and
   // in this vault alone (the tooltip).
   const counts = (() => {
@@ -115,15 +116,29 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
     tab === 'charms'
       ? isCharm(e.item.code) &&
         (charmSize === 'all' || (charmSize === 'unique' ? d.qualityClass === 'unique' : CHARM_TYPES[itemTypeOf(e.item.code)] === charmSize))
-      : (!IN_COLLECTION.has(d.qualityClass) || (tab === 'items' && also.includes(d.qualityClass))) && !isCharm(e.item.code) && isJewel(e.item.code) === (tab === 'jewels');
-  // everything the tab, quality and type filters leave, before the tier chips
-  const preTier = useMemo(() => {
-    const f = FILTERS.find((x) => x.key === filter)!;
-    return vault.entries
-      .map((e, i) => ({ e, d: desc(e.item), i }))
-      .filter(({ e, d }) => inTab(e, d) && f.test(d.qualityClass) && (tab !== 'items' || typeMatches(type, itemTypeOf(e.item.code))));
+      : tab === 'items'
+        ? d.qualityClass !== 'rune' && d.qualityClass !== 'gem' && !isCharm(e.item.code) && !isJewel(e.item.code)
+        : !IN_COLLECTION.has(d.qualityClass) && !isCharm(e.item.code) && isJewel(e.item.code);
+  // the quality chips this tab has, and the ones picked on it
+  const chips = QUALITY_CHIPS.filter((c) => tab === 'items' || !c.items);
+  const picked = chips.filter((c) => quals.includes(c.key));
+  // everything the tab and type filters leave, before the quality and tier chips
+  const preQual = useMemo(
+    () =>
+      vault.entries
+        .map((e, i) => ({ e, d: desc(e.item), i }))
+        .filter(({ e, d }) => inTab(e, d) && (tab !== 'items' || typeMatches(type, itemTypeOf(e.item.code)))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vault.entries, vault.entries.length, filter, type, tab, charmSize, also, store.rev]);
+    [vault.entries, vault.entries.length, type, tab, charmSize, store.rev],
+  );
+  const qualCounts = new Map<string, number>();
+  for (const { d } of preQual) for (const c of chips) if (c.test(d.qualityClass)) qualCounts.set(c.key, (qualCounts.get(c.key) ?? 0) + 1);
+  // everything the tab, quality and type filters leave, before the tier chips
+  const preTier = useMemo(
+    () => (picked.length ? preQual.filter(({ d }) => picked.some((c) => c.test(d.qualityClass))) : preQual),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [preQual, picked.map((c) => c.key).join()],
+  );
   // how many items each tier has under those filters: a tier with none can't be picked (boots have no "None", rings have no Normal/Elite)
   const tierCounts = new Map<string, number>();
   for (const { e } of preTier) tierCounts.set(tierOf(e.item.code), (tierCounts.get(tierOf(e.item.code)) ?? 0) + 1);
@@ -158,7 +173,7 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
   // item types present in the Items list, with counts, for the type filter
   const types = new Map<string, number>();
   for (const e of vault.entries)
-    if (!IN_COLLECTION.has(desc(e.item).qualityClass) && !isJewel(e.item.code) && !isCharm(e.item.code)) {
+    if (!['rune', 'gem'].includes(desc(e.item).qualityClass) && !isJewel(e.item.code) && !isCharm(e.item.code)) {
       const t = itemTypeOf(e.item.code);
       types.set(t, (types.get(t) ?? 0) + 1);
     }
@@ -215,18 +230,21 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
         <span className="text-[12px] text-ink-400">
           {vault.entries.length} item{vault.entries.length === 1 ? '' : 's'} · unlimited storage
         </span>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as Sort)}
-          className="ml-auto rounded border border-ink-600 bg-ink-900 px-2 py-1 text-[12px] text-ink-200"
-          aria-label="Sort"
-        >
-          {SORTS.map(([v, label]) => (
-            <option key={v} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
+        {/* sorting applies to the item lists; the collection tabs have a fixed order */}
+        {(tab === 'items' || tab === 'jewels' || tab === 'charms') && (
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            className="ml-auto rounded border border-ink-600 bg-ink-900 px-2 py-1 text-[12px] text-ink-200"
+            aria-label="Sort"
+          >
+            {SORTS.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <VaultGold docId={docId} vault={vault} />
       <div className="mt-3 flex flex-wrap items-center gap-1 border-b border-ink-700" role="tablist">
@@ -285,31 +303,31 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
                 {test ? `Select ${hits} highlighted` : 'Select all shown'}
               </button>
             )}
-            {tab === 'items' &&
-              (['unique', 'set', 'runeword'] as QualityClass[]).map((q) => (
-                <label
-                  key={q}
-                  className={`flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] ${also.includes(q) ? 'border-gold-500 bg-gold-600/15 text-gold-300' : 'border-ink-600 text-ink-400 hover:text-ink-200'}`}
-                  title={`Also list ${q === 'runeword' ? 'runewords' : q === 'set' ? 'set items' : 'uniques'} here, so they sort and filter like the rest (they stay in their own tab too)`}
+            <button
+              onClick={() => setQuals([])}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] ${!picked.length ? 'border-gold-500 bg-gold-600/15 text-gold-300' : 'border-ink-600 text-ink-400 hover:text-ink-200'}`}
+              title="Show everything (picking nothing is the same)"
+            >
+              All
+            </button>
+            {chips.map((c) => {
+              const has = qualCounts.has(c.key);
+              const on = picked.includes(c);
+              // Jewels and Charms only show the kinds they have; the Items tab greys out the empty ones
+              if (tab !== 'items' && !has && !on) return null;
+              return (
+                <button
+                  key={c.key}
+                  disabled={!has && !on}
+                  onClick={() => setQuals(on ? quals.filter((x) => x !== c.key) : [...quals, c.key])}
+                  aria-pressed={on}
+                  title={has || on ? 'Pick one or several' : `No ${c.label.toLowerCase()} under the current filters`}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] ${on ? 'border-gold-500 bg-gold-600/15 text-gold-300' : has ? 'border-ink-600 text-ink-400 hover:text-ink-200' : 'cursor-not-allowed border-ink-700 text-ink-600 opacity-40'}`}
                 >
-                  <input
-                    type="checkbox"
-                    className="h-3 w-3 accent-[#c7a04a]"
-                    checked={also.includes(q)}
-                    onChange={() => setAlso(also.includes(q) ? also.filter((x) => x !== q) : [...also, q])}
-                  />
-                  {q === 'runeword' ? 'Runewords' : q === 'set' ? 'Sets' : 'Uniques'}
-                </label>
-              ))}
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`rounded-full border px-2.5 py-0.5 text-[11px] ${filter === f.key ? 'border-gold-500 bg-gold-600/15 text-gold-300' : 'border-ink-600 text-ink-400 hover:text-ink-200'}`}
-              >
-                {f.label}
-              </button>
-            ))}
+                  {c.label}
+                </button>
+              );
+            })}
             {tab === 'items' &&
               TIERS.map((t) => {
                 const has = tierCounts.has(t);
@@ -396,7 +414,7 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
                     : tab === 'charms'
                       ? 'No charms here yet. Drag them in from a character or stash.'
                       : vault.entries.length
-                        ? 'Everything here is a unique, set item, runeword or rune: see their tabs above.'
+                        ? 'Only runes and gems here: see their tabs above.'
                         : 'Drag items here from a character or stash, or double-click an item in the other pane.'}
               </div>
             ) : store.settings.vaultView === 'cards' ? (

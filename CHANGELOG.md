@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.6
+
+- Vault: item filters are now multi-select (All, Rare/Craft, Magic, Bases, Sets, Uniques, Runewords), and the Items tab shows uniques, sets and runewords with them
+- Vault: Jewels and Charms hide filters that don't apply, and the Sort box only shows on Items, Jewels and Charms
+
 ## 2.7.5
 
 - Fixed: rejuvenation potions were lost when moved onto the Stackables tab
