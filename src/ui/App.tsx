@@ -310,6 +310,7 @@ function SettingsModal({ onClose, onSwitch }: { onClose: () => void; onSwitch: (
             <SharedStashSetting />
           </Section>
           <ArtSettings />
+          <VaultSettings />
           <TradeSettings />
           {store.platform.updates && <UpdateSettings />}
           <Section title="About">
@@ -438,6 +439,32 @@ export function ArtSettings() {
       ) : (
         <Hint>Game art needs the desktop app or a browser that can open folders. Tiles are used here.</Hint>
       )}
+    </Section>
+  );
+}
+
+function VaultSettings() {
+  const store = useStore();
+  const names = [...store.docs.values()].filter((d) => d.doc?.kind === 'vault').map((d) => (d.doc as { name: string }).name);
+  if (names.length < 2) return null;
+  return (
+    <Section title="Vaults">
+      <label className="flex items-center gap-3 text-[13px] text-ink-200">
+        Open this vault first
+        <select
+          className="rounded border border-ink-600 bg-ink-900 px-2 py-1 text-[13px] text-ink-200"
+          value={store.settings.defaultVault && names.includes(store.settings.defaultVault) ? store.settings.defaultVault : ''}
+          onChange={(e) => store.setSettings({ defaultVault: e.target.value || undefined })}
+        >
+          <option value="">The fullest one</option>
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Hint>It opens on the left when the app starts or a folder opens.</Hint>
     </Section>
   );
 }

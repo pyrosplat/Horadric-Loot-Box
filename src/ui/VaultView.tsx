@@ -88,6 +88,8 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('items');
+  // the Items list can also list uniques, sets and runewords, so they sort and filter like everything else
+  const [also, setAlso] = useState<QualityClass[]>([]);
 
   const loose = vault.entries.filter((e) => !IN_COLLECTION.has(desc(e.item).qualityClass));
   const jewelCount = loose.filter((e) => isJewel(e.item.code)).length;
@@ -113,7 +115,7 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
     tab === 'charms'
       ? isCharm(e.item.code) &&
         (charmSize === 'all' || (charmSize === 'unique' ? d.qualityClass === 'unique' : CHARM_TYPES[itemTypeOf(e.item.code)] === charmSize))
-      : !IN_COLLECTION.has(d.qualityClass) && !isCharm(e.item.code) && isJewel(e.item.code) === (tab === 'jewels');
+      : (!IN_COLLECTION.has(d.qualityClass) || (tab === 'items' && also.includes(d.qualityClass))) && !isCharm(e.item.code) && isJewel(e.item.code) === (tab === 'jewels');
   // everything the tab, quality and type filters leave, before the tier chips
   const preTier = useMemo(() => {
     const f = FILTERS.find((x) => x.key === filter)!;
@@ -121,7 +123,7 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
       .map((e, i) => ({ e, d: desc(e.item), i }))
       .filter(({ e, d }) => inTab(e, d) && f.test(d.qualityClass) && (tab !== 'items' || typeMatches(type, itemTypeOf(e.item.code))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vault.entries, vault.entries.length, filter, type, tab, charmSize, store.rev]);
+  }, [vault.entries, vault.entries.length, filter, type, tab, charmSize, also, store.rev]);
   // how many items each tier has under those filters: a tier with none can't be picked (boots have no "None", rings have no Normal/Elite)
   const tierCounts = new Map<string, number>();
   for (const { e } of preTier) tierCounts.set(tierOf(e.item.code), (tierCounts.get(tierOf(e.item.code)) ?? 0) + 1);
@@ -139,6 +141,7 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
   }
   const heroNow = heroCounts.has(hero) ? hero : 'all';
   const test = searchMatcher(query);
+  const hide = !!test && store.settings.searchMode !== 'highlight';
   const rows = useMemo(() => {
     const list = baseRows.filter(({ e }) => heroNow === 'all' || heroOf(e.item.code) === heroNow);
     list.sort((a, b) => {
@@ -149,8 +152,8 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
       if (sort === 'quality') return Q_ORDER.indexOf(a.d.qualityClass) - Q_ORDER.indexOf(b.d.qualityClass) || a.d.name.localeCompare(b.d.name);
       return b.i - a.i;
     });
-    return list;
-  }, [baseRows, heroNow, sort]);
+    return hide && test ? list.filter(({ d }) => test(d.search)) : list;
+  }, [baseRows, heroNow, sort, hide, query]);
   const hits = test ? rows.filter(({ d }) => test(d.search)).length : 0;
   // item types present in the Items list, with counts, for the type filter
   const types = new Map<string, number>();
@@ -282,6 +285,22 @@ export function VaultView({ docId, vault, pane, query }: { docId: string; vault:
                 {test ? `Select ${hits} highlighted` : 'Select all shown'}
               </button>
             )}
+            {tab === 'items' &&
+              (['unique', 'set', 'runeword'] as QualityClass[]).map((q) => (
+                <label
+                  key={q}
+                  className={`flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] ${also.includes(q) ? 'border-gold-500 bg-gold-600/15 text-gold-300' : 'border-ink-600 text-ink-400 hover:text-ink-200'}`}
+                  title={`Also list ${q === 'runeword' ? 'runewords' : q === 'set' ? 'set items' : 'uniques'} here, so they sort and filter like the rest (they stay in their own tab too)`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3 accent-[#c7a04a]"
+                    checked={also.includes(q)}
+                    onChange={() => setAlso(also.includes(q) ? also.filter((x) => x !== q) : [...also, q])}
+                  />
+                  {q === 'runeword' ? 'Runewords' : q === 'set' ? 'Sets' : 'Uniques'}
+                </label>
+              ))}
             {FILTERS.map((f) => (
               <button
                 key={f.key}

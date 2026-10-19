@@ -82,7 +82,7 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={entry?.doc?.kind === 'vault' ? 'Highlight in vault…' : 'Highlight…'}
+            placeholder={entry?.doc?.kind === 'vault' ? (store.settings.searchMode === 'highlight' ? 'Highlight in vault…' : 'Search vault…') : 'Highlight…'}
             className="w-full rounded border border-ink-600 bg-ink-900 py-1 pl-2 pr-6 text-[12px] text-ink-200 placeholder:text-ink-500 focus:border-gold-500 focus:outline-none"
           />
           {query && (
@@ -91,6 +91,15 @@ export function Pane({ pane }: { pane: 0 | 1 }) {
             </button>
           )}
         </div>
+        {entry?.doc?.kind === 'vault' && (
+          <button
+            className="shrink-0 rounded border border-ink-600 px-2 py-1 text-[11px] text-ink-300 hover:text-ink-100"
+            onClick={() => store.setSettings({ searchMode: store.settings.searchMode === 'highlight' ? 'filter' : 'highlight' })}
+            title={store.settings.searchMode === 'highlight' ? 'Searching highlights matches and fades the rest. Click to hide non-matches instead.' : 'Searching hides items that don\'t match. Click to highlight matches and fade the rest instead.'}
+          >
+            {store.settings.searchMode === 'highlight' ? 'Highlight' : 'Filter'}
+          </button>
+        )}
         <button
           className="d2-close"
           onClick={() => store.closePane(pane)}

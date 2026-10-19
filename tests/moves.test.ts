@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import fs from 'node:fs';
-import { GD, ItemMode, gemChains, setStack, Quality, canEquip, collectHeld, parseCharacter, parseStash, serializeVerified, type CollectionKind, type D2Character, type D2Item, type D2SharedStash } from '../src/core';
+import { GD, ItemMode, gemChains, setStack, stackCount, Quality, canEquip, collectHeld, parseCharacter, parseStash, serializeVerified, type CollectionKind, type D2Character, type D2Item, type D2SharedStash } from '../src/core';
 import type { Platform } from '../src/platform';
 import { Store } from '../src/state/store';
 
@@ -176,6 +176,15 @@ describe('stackables tab', () => {
     const sword = modern().tabs[0].items[0];
     expect(store.check(sword, 't/ModernSharedStashSoftCoreV2.d2i', { docId: 't/ModernSharedStashSoftCoreV2.d2i', area: 'stackables', tab: stackTab() }).ok).toBe(false);
     roundTrip(modern());
+  });
+});
+
+describe('stack counts', () => {
+  test('a loose potion with quantity 0 counts as one, so it joins a stack instead of vanishing', () => {
+    expect(stackCount({ quantity: 0 } as D2Item)).toBe(1);
+    expect(stackCount({} as D2Item)).toBe(1);
+    expect(stackCount({ quantity: 7 } as D2Item)).toBe(7);
+    expect(stackCount({ advancedStackSize: 4, quantity: 0 } as D2Item)).toBe(4);
   });
 });
 

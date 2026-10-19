@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.5
+
+- Fixed: rejuvenation potions were lost when moved onto the Stackables tab
+- Vault: search can hide non-matching items (Filter, the default) or highlight them (Highlight), with a button next to the search box
+- Vault: the Items tab can also list uniques, sets and runewords
+- Settings: choose which vault opens first
+
 ## 2.7.4
 
 - Stackables: Upgrade gems button combines every 3 gems of a grade into 1 of the next, with a Keep slider (0-25) for how many of each grade stay and a confirmation

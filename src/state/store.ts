@@ -126,6 +126,10 @@ export interface Settings {
   itemView: ItemView;
   /** Vault items as a list or as cards. */
   vaultView: 'list' | 'cards';
+  /** The vault search box: hide items that don't match (default) or just highlight the matches. */
+  searchMode?: 'filter' | 'highlight';
+  /** The vault that opens first on the left (by name); the fullest one when unset. */
+  defaultVault?: string;
   /** Collections: give ethereal copies their own slot. */
   grailEth: boolean;
   /** Interface scale (1 = 100%). */
@@ -493,7 +497,7 @@ export class Store {
     const modified = new Map(this.files.map((f) => [f.path, f.modified ?? 0]));
     const known = [...modified.values()].some(Boolean);
     const char = known ? [...chars].sort((a, b) => (modified.get(b.path) ?? 0) - (modified.get(a.path) ?? 0))[0] : chars[0];
-    const vault = docs.filter((d) => d.doc?.kind === 'vault').sort((a, b) => (b.doc as Vault).entries.length - (a.doc as Vault).entries.length)[0];
+    const vault = docs.find((d) => d.doc?.kind === 'vault' && this.settings.defaultVault && (d.doc as Vault).name === this.settings.defaultVault) ?? docs.filter((d) => d.doc?.kind === 'vault').sort((a, b) => (b.doc as Vault).entries.length - (a.doc as Vault).entries.length)[0];
     this.panes = [{ docId: (vault ?? stash)?.id, tab: 0 }, { docId: (char ?? stash)?.id, tab: 0 }];
   }
 

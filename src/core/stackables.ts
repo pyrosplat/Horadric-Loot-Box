@@ -66,7 +66,8 @@ export const STACKABLE_CODES: string[] = STACKABLE_SLOTS.map((s) => s.code);
 export const STACKABLES_ROWS = Math.max(...STACKABLE_SLOTS.map((s) => s.y + s.h));
 
 export function stackCount(item: D2Item): number {
-  return item.advancedStackSize ?? item.quantity ?? 1;
+  // a loose potion can read quantity 0: that's still one item
+  return item.advancedStackSize ?? (item.quantity || 1);
 }
 
 /**

@@ -166,14 +166,7 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
   };
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
-  const visible = all.filter(({ entry: e, key }) => {
-    if (cat !== 'All' && e.category !== cat) return false;
-    const found = have.has(key);
-    if (show === 'found' && !found) return false;
-    if (show === 'missing' && found) return false;
-    return true;
-  });
-  // a search lights up what matches and fades the rest; it never hides anything, so these tabs can't go blank
+  // a search lights up what matches and fades the rest; with the Filter setting the rest are hidden instead
   const lit = (e: CatalogEntry, eth: boolean) => {
     if (!terms.length) return undefined;
     const hay =
@@ -181,6 +174,15 @@ export function CollectionView({ docId, pane, kind, query }: { docId: string; pa
     return terms.every((t) => hay.includes(t)) ? 'hit' : 'dim';
   };
 
+  const hide = terms.length > 0 && store.settings.searchMode !== 'highlight';
+  const visible = all.filter(({ entry: e, key, eth }) => {
+    if (cat !== 'All' && e.category !== cat) return false;
+    if (hide && lit(e, eth) !== 'hit') return false;
+    const found = have.has(key);
+    if (show === 'found' && !found) return false;
+    if (show === 'missing' && found) return false;
+    return true;
+  });
   const sections: Section[] = [];
   const push = (title: string, sl: Slot) => {
     let s = sections.find((x) => x.title === title);
