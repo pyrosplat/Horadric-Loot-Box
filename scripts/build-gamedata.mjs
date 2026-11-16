@@ -159,11 +159,44 @@ for (const [file, kind] of [['weapons', 'weapon'], ['armor', 'armor'], ['misc', 
   }
 }
 
+// ---------- property groups ----------
+// Reign of the Warlock: a property that rolls one of several (a Renewed charm's "Gelid-Affix2": magic find or gold
+// find). PickMode 2 picks one option, weighted by its Chance.
+const propGroups = {};
+for (const r of readTsv('propertygroups')) {
+  if (!r.code || r.code.startsWith('*')) continue;
+  const options = [];
+  for (let i = 1; i <= 8; i++) {
+    const c = r[`Prop${i}`];
+    if (!c) continue;
+    options.push({ prop: [c, r[`ParMin${i}`] ?? '', int(r[`ModMin${i}`]), int(r[`ModMax${i}`])], chance: int(r[`Chance${i}`]) || 1 });
+  }
+  if (options.length) propGroups[r.code] = { pick: int(r.PickMode), options };
+}
+
 // ---------- item property lists: [code, param, min, max] (for tooltips of items not found yet, and roll ranges) ----------
+// Per-level properties (+N Defense per character level, ...) keep their rate in the parameter, and the save only has
+// a few bits for it (6 for most, 5 for thorns). A table can ask for more (Swordguard's 64 in season 16) and the game
+// then holds the rate at the largest number that fits, so the same cap is applied here.
+const perLevelCap = new Map();
+for (const p of readTsv('properties')) {
+  if (p.func1 !== '17') continue;
+  const stat = statRows.find((s) => s.Stat === p.stat1);
+  const bits = stat ? int(stat['Save Bits']) : 0;
+  if (bits) perLevelCap.set(p.code, 2 ** bits - 1);
+}
+const clampRate = (code, param) => {
+  const cap = perLevelCap.get(code);
+  return cap && /^\d+$/.test(param) && int(param) > cap ? String(cap) : param;
+};
+// PickMode 0 gives an item every property in the group (Eternity's attack speed, damage and indestructible in season
+// 16), so those are written out as ordinary properties; the other modes stay a group that rolls one option.
 const propList = (r, code, param, min, max, n) =>
   Array.from({ length: n }, (_, i) => i + 1)
     .map((i) => [r[code(i)], r[param(i)] ?? '', int(r[min(i)]), int(r[max(i)])])
-    .filter(([c]) => c && !c.startsWith('*'));
+    .filter(([c]) => c && !c.startsWith('*'))
+    .flatMap((p) => (propGroups[p[0]]?.pick === 0 ? propGroups[p[0]].options.map((o) => o.prop) : [p]))
+    .map(([c, par, mn, mx]) => [c, clampRate(c, par), mn, mx]);
 
 // ---------- uniques / sets ----------
 // Unique/set IDs: row index with the 'Expansion' separator rows skipped (matches the '*ID' comment column).
@@ -184,20 +217,9 @@ for (const r of readTsv('uniqueitems')) {
     props: propList(r, (i) => `prop${i}`, (i) => `par${i}`, (i) => `min${i}`, (i) => `max${i}`, 12),
   };
 }
-// ---------- property groups ----------
-// Reign of the Warlock: a property that rolls one of several (a Renewed charm's "Gelid-Affix2": magic find or gold
-// find). PickMode 2 picks one option, weighted by its Chance.
-const propGroups = {};
-for (const r of readTsv('propertygroups')) {
-  if (!r.code || r.code.startsWith('*')) continue;
-  const options = [];
-  for (let i = 1; i <= 8; i++) {
-    const c = r[`Prop${i}`];
-    if (!c) continue;
-    options.push({ prop: [c, r[`ParMin${i}`] ?? '', int(r[`ModMin${i}`]), int(r[`ModMax${i}`])], chance: int(r[`Chance${i}`]) || 1 });
-  }
-  if (options.length) propGroups[r.code] = { pick: int(r.PickMode), options };
-}
+// ---------- monsters (the name a "Reanimate as" line shows) ----------
+const monsters = {};
+for (const r of readTsv('monstats')) if (r['*hcIdx'] !== '') monsters[int(r['*hcIdx'])] = str(r.NameStr, r.NameStr);
 
 const setItems = {};
 let setId = 0;
@@ -420,6 +442,7 @@ const data = {
   automagic,
   mercs,
   mercNames: nameLists,
+  monsters,
   gems,
   properties,
   ui,

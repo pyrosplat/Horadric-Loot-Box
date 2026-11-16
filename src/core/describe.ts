@@ -89,8 +89,9 @@ function lineForStat(s: ItemStat): Line | null {
     case 16:
       return { text: sprintf(str, v, skillName(s.param)), priority: pri };
     case 22:
-    case 23:
       return { text: sprintf(str, v, `#${s.param}`), priority: pri };
+    case 23:
+      return { text: sprintf(str, v, GD.monsters[s.param] ?? `#${s.param}`), priority: pri };
     case 24:
       return { text: sprintf(str, s.param & 63, skillName(s.param >> 6), v & 0xff, (v >> 8) & 0xff), priority: pri };
     case 27:

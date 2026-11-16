@@ -1498,3 +1498,30 @@ describe('vault tabs', () => {
     expect(page).toMatch(/Items <span[^>]*>0<\/span>/);
   });
 });
+
+describe('season 16 item data', () => {
+  test('Eternity gets every property of its group and takes missile weapons too', async () => {
+    const { createRunewordItem, describeItem } = await import('../src/core');
+    const rw = GD.runewords.find((r) => r.name === 'Eternity')!;
+    expect(rw.itypes).toEqual(['mele', 'miss']);
+    expect(rw.props.map((p) => p[0])).toEqual(expect.arrayContaining(['swing1', 'dmg/lvl', 'indestruct', 'oskill']));
+    const text = describeItem(createRunewordItem(rw.row, 'lbw')).lines.map((l) => (typeof l === 'string' ? l : l.text)).join('\n');
+    expect(text).toContain('+30% Increased Attack Speed');
+    expect(text).toContain('Indestructible');
+    expect(text).toContain('+5 to Revive');
+  });
+
+  test('per-level rates are held to what the save can store', () => {
+    // the table asks for 64 on Swordguard; the stat has 6 bits, so the game (and the patch notes' 7-779) use 63
+    const sg = Object.values(GD.uniques).find((u) => u.name === 'Swordguard')!;
+    expect(sg.props.find((p) => p[0] === 'ac/lvl')![1]).toBe('63');
+  });
+
+  test('Reanimate names its monster', async () => {
+    const { createTemplateItem, rollSlots, pickRolls, describeItem } = await import('../src/core');
+    const [id] = Object.entries(GD.uniques).find(([, u]) => u.name === "Grim's Burning Dead")!;
+    const it = createTemplateItem('unique', Number(id), pickRolls(rollSlots('unique', Number(id)), 'perfect'));
+    const text = describeItem(it).lines.map((l) => (typeof l === 'string' ? l : l.text)).join('\n');
+    expect(text).toContain('Reanimate as: Burning Dead Archer');
+  });
+});

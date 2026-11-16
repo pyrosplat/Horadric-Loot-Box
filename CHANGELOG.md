@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.7
+
+- Item data updated for the Season 16 patch: changed uniques, Isenhart's set and Eternity (now also for missile weapons)
+- "Reanimate as" lines show the monster's name
+
 ## 2.7.6
 
 - Vault: item filters are now multi-select (All, Rare/Craft, Magic, Bases, Sets, Uniques, Runewords), and the Items tab shows uniques, sets and runewords with them

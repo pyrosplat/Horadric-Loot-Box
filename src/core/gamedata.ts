@@ -150,6 +150,8 @@ export interface GameData {
    */
   mercs: Record<string, { cls: string; act: number; diff: number; expPerLvl: number; skills: string[]; names: number; unit?: number; eq?: string }>;
   mercNames: string[][];
+  /** monstats.txt: monster names by id (what "Reanimate as" shows). */
+  monsters: Record<string, string>;
   gems: Record<string, { name: string; letter?: string; weapon: GemMod[]; helm: GemMod[]; shield: GemMod[] }>;
   properties: Record<string, { func: number; stat?: string; val?: string }[]>;
   ui: Record<string, string>;

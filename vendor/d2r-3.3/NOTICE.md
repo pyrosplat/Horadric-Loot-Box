@@ -10,3 +10,5 @@ audio or executable code is included; item pictures are read from the user's own
 
 If Blizzard asks for this data to be removed, delete this folder and ship `gamedata.json` built from the
 user's own install instead.
+
+The tables were refreshed for the Season 16 patch (Reign of the Warlock 3.4) and `monstats.txt` is trimmed to its id and name columns. The folder keeps its `d2r-3.3` name so updates stay small.

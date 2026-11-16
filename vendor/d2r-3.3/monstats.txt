@@ -1,0 +1,752 @@
+Id	*hcIdx	NameStr
+skeleton1	0	Skeleton
+skeleton2	1	Returned
+skeleton3	2	BoneWarrior
+skeleton4	3	BurningDead
+skeleton5	4	Horror
+zombie1	5	Zombie
+zombie2	6	HungryDead
+zombie3	7	Ghoul
+zombie4	8	DrownedCarcass
+zombie5	9	PlagueBearer
+bighead1	10	Afflicted
+bighead2	11	Tainted
+bighead3	12	Misshapen
+bighead4	13	Disfigured
+bighead5	14	Damned
+foulcrow1	15	FoulCrow
+foulcrow2	16	BloodHawk
+foulcrow3	17	BlackRaptor
+foulcrow4	18	CloudStalker
+fallen1	19	Fallen
+fallen2	20	Carver
+fallen3	21	Devilkin
+fallen4	22	DarkOne
+fallen5	23	WarpedFallen
+brute2	24	Brute
+brute3	25	Yeti
+brute4	26	Crusher
+brute5	27	WailingBeast
+brute1	28	GargantuanBeast
+sandraider1	29	SandRaider
+sandraider2	30	Marauder
+sandraider3	31	Invader
+sandraider4	32	Infidel
+sandraider5	33	Assailant
+gorgon1	34	unused
+gorgon2	35	unused
+gorgon3	36	unused
+gorgon4	37	unused
+wraith1	38	Ghost
+wraith2	39	Wraith
+wraith3	40	Specter
+wraith4	41	Apparition
+wraith5	42	DarkShape
+corruptrogue1	43	DarkHunter
+corruptrogue2	44	VileHunter
+corruptrogue3	45	DarkStalker
+corruptrogue4	46	BlackRogue
+corruptrogue5	47	FleshHunter
+baboon1	48	DuneBeast
+baboon2	49	RockDweller
+baboon3	50	JungleHunter
+baboon4	51	DoomApe
+baboon5	52	TempleGuard
+goatman1	53	MoonClan
+goatman2	54	NightClan
+goatman3	55	BloodClan
+goatman4	56	HellClan
+goatman5	57	DeathClan
+fallenshaman1	58	FallenShaman
+fallenshaman2	59	CarverShaman
+fallenshaman3	60	DevilkinShaman
+fallenshaman4	61	DarkShaman
+fallenshaman5	62	WarpedShaman
+quillrat1	63	QuillRat
+quillrat2	64	SpikeFiend
+quillrat3	65	ThornBeast
+quillrat4	66	RazorSpine
+quillrat5	67	JungleUrchin
+sandmaggot1	68	SandMaggot
+sandmaggot2	69	RockWorm
+sandmaggot3	70	Devourer
+sandmaggot4	71	GiantLamprey
+sandmaggot5	72	WorldKiller
+clawviper1	73	TombViper
+clawviper2	74	ClawViper
+clawviper3	75	Salamander
+clawviper4	76	PitViper
+clawviper5	77	SerpentMagus
+sandleaper1	78	SandLeaper
+sandleaper2	79	CaveLeaper
+sandleaper3	80	TombCreeper
+sandleaper4	81	TreeLurker
+sandleaper5	82	RazorPitDemon
+pantherwoman1	83	Huntress
+pantherwoman2	84	SaberCat
+pantherwoman3	85	NightTiger
+pantherwoman4	86	HellCat
+swarm1	87	Itchies
+swarm2	88	BlackLocusts
+swarm3	89	PlagueBugs
+swarm4	90	HellSwarm
+scarab1	91	DungSoldier
+scarab2	92	SandWarrior
+scarab3	93	Scarab
+scarab4	94	SteelWeevil
+scarab5	95	AlbinoRoach
+mummy1	96	DriedCorpse
+mummy2	97	Decayed
+mummy3	98	Embalmed
+mummy4	99	PreservedDead
+mummy5	100	Cadaver
+unraveler1	101	HollowOne
+unraveler2	102	Guardian
+unraveler3	103	Unraveler
+unraveler4	104	Horadrim Ancient
+unraveler5	105	Baal Subject Mummy
+chaoshorde1	106	unused
+chaoshorde2	107	unused
+chaoshorde3	108	unused
+chaoshorde4	109	unused
+vulture1	110	CarrionBird
+vulture2	111	UndeadScavenger
+vulture3	112	HellBuzzard
+vulture4	113	WingedNightmare
+mosquito1	114	Sucker
+mosquito2	115	Feeder
+mosquito3	116	BloodHook
+mosquito4	117	BloodWing
+willowisp1	118	Gloam
+willowisp2	119	SwampGhost
+willowisp3	120	BurningSoul
+willowisp4	121	BlackSoul
+arach1	122	Arach
+arach2	123	SandFisher
+arach3	124	PoisonSpinner
+arach4	125	FlameSpider
+arach5	126	SpiderMagus
+thornhulk1	127	ThornedHulk
+thornhulk2	128	BrambleHulk
+thornhulk3	129	Thrasher
+thornhulk4	130	Spikefist
+vampire1	131	GhoulLord
+vampire2	132	NightLord
+vampire3	133	DarkLord
+vampire4	134	BloodLord
+vampire5	135	Banished
+batdemon1	136	DesertWing
+batdemon2	137	Fiend
+batdemon3	138	Gloombat
+batdemon4	139	BloodDiver
+batdemon5	140	DarkFamiliar
+fetish1	141	RatMan
+fetish2	142	Fetish
+fetish3	143	Flayer
+fetish4	144	SoulKiller
+fetish5	145	StygianDoll
+cain1	146	DeckardCain
+gheed	147	Gheed
+akara	148	Akara
+chicken	149	dummy
+kashya	150	Kashya
+rat	151	dummy
+rogue1	152	Dummy
+hellmeteor	153	Dummy
+charsi	154	Charsi
+warriv1	155	Warriv
+andariel	156	Andariel
+bird1	157	dummy
+bird2	158	dummy
+bat	159	dummy
+cr_archer1	160	DarkRanger
+cr_archer2	161	VileArcher
+cr_archer3	162	DarkArcher
+cr_archer4	163	BlackArcher
+cr_archer5	164	FleshArcher
+cr_lancer1	165	DarkSpearwoman
+cr_lancer2	166	VileLancer
+cr_lancer3	167	DarkLancer
+cr_lancer4	168	BlackLancer
+cr_lancer5	169	FleshLancer
+sk_archer1	170	SkeletonArcher
+sk_archer2	171	ReturnedArcher
+sk_archer3	172	BoneArcher
+sk_archer4	173	BurningDeadArcher
+sk_archer5	174	HorrorArcher
+warriv2	175	Warriv
+atma	176	Atma
+drognan	177	Drognan
+fara	178	Fara
+cow	179	dummy
+maggotbaby1	180	SandMaggotYoung
+maggotbaby2	181	RockWormYoung
+maggotbaby3	182	DevourerYoung
+maggotbaby4	183	GiantLampreyYoung
+maggotbaby5	184	WorldKillerYoung
+camel	185	dummy
+blunderbore1	186	Blunderbore
+blunderbore2	187	Gorbelly
+blunderbore3	188	Mauler
+blunderbore4	189	Urdar
+maggotegg1	190	SandMaggotEgg
+maggotegg2	191	RockWormEgg
+maggotegg3	192	DevourerEgg
+maggotegg4	193	GiantLampreyEgg
+maggotegg5	194	WorldKillerEgg
+act2male	195	dummy
+act2female	196	Dummy
+act2child	197	dummy
+greiz	198	Greiz
+elzix	199	Elzix
+geglash	200	Geglash
+jerhyn	201	Jerhyn
+lysander	202	Lysander
+act2guard1	203	Dummy
+act2vendor1	204	dummy
+act2vendor2	205	dummy
+crownest1	206	FoulCrowNest
+crownest2	207	BloodHawkNest
+crownest3	208	BlackVultureNest
+crownest4	209	CloudStalkerNest
+meshif1	210	Meshif
+duriel	211	Duriel
+bonefetish1	212	Undead RatMan
+bonefetish2	213	Undead Fetish
+bonefetish3	214	Undead Flayer
+bonefetish4	215	Undead SoulKiller
+bonefetish5	216	Undead StygianDoll
+darkguard1	217	unused
+darkguard2	218	unused
+darkguard3	219	unused
+darkguard4	220	unused
+darkguard5	221	unused
+bloodmage1	222	unused
+bloodmage2	223	unused
+bloodmage3	224	unused
+bloodmage4	225	unused
+bloodmage5	226	unused
+maggot	227	Maggot
+sarcophagus	228	MummyGenerator
+radament	229	Radament
+firebeast	230	unused
+iceglobe	231	unused
+lightningbeast	232	unused
+poisonorb	233	unused
+flyingscimitar	234	FlyingScimitar
+zealot1	235	Zakarumite
+zealot2	236	Faithful
+zealot3	237	Zealot
+cantor1	238	Sexton
+cantor2	239	Cantor
+cantor3	240	Heirophant
+cantor4	241	Heirophant
+mephisto	242	Mephisto
+diablo	243	Diablo
+cain2	244	DeckardCain
+cain3	245	DeckardCain
+cain4	246	DeckardCain
+frogdemon1	247	Swamp Dweller
+frogdemon2	248	Bog Creature
+frogdemon3	249	Slime Prince
+summoner	250	Summoner
+tyrael1	251	tyrael
+asheara	252	asheara
+hratli	253	hratli
+alkor	254	alkor
+ormus	255	ormus
+izual	256	izual
+halbu	257	halbu
+tentacle1	258	WaterWatcherLimb
+tentacle2	259	RiverStalkerLimb
+tentacle3	260	StygianWatcherLimb
+tentaclehead1	261	WaterWatcherHead
+tentaclehead2	262	RiverStalkerHead
+tentaclehead3	263	StygianWatcherHead
+meshif2	264	meshif
+cain5	265	DeckardCain
+navi	266	navi
+bloodraven	267	Bloodraven
+bug	268	Dummy
+scorpion	269	Dummy
+rogue2	270	RogueScout
+roguehire	271	Rogue
+rogue3	272	Dummy
+gargoyletrap	273	GargoyleTrap
+skmage_pois1	274	ReturnedMage
+skmage_pois2	275	BoneMage
+skmage_pois3	276	BurningDeadMage
+skmage_pois4	277	HorrorMage
+fetishshaman1	278	RatManShaman
+fetishshaman2	279	FetishShaman
+fetishshaman3	280	FlayerShaman
+fetishshaman4	281	SoulKillerShaman
+fetishshaman5	282	StygianDollShaman
+larva	283	larva
+maggotqueen1	284	SandMaggotQueen
+maggotqueen2	285	RockWormQueen
+maggotqueen3	286	DevourerQueen
+maggotqueen4	287	GiantLampreyQueen
+maggotqueen5	288	WorldKillerQueen
+claygolem	289	ClayGolem
+bloodgolem	290	BloodGolem
+irongolem	291	IronGolem
+firegolem	292	FireGolem
+familiar	293	Dummy
+act3male	294	Dummy
+baboon6	295	NightMarauder
+act3female	296	Dummy
+natalya	297	Natalya
+vilemother1	298	FleshSpawner
+vilemother2	299	StygianHag
+vilemother3	300	Grotesque
+vilechild1	301	FleshBeast
+vilechild2	302	StygianDog
+vilechild3	303	GrotesqueWyrm
+fingermage1	304	Groper
+fingermage2	305	Strangler
+fingermage3	306	StormCaster
+regurgitator1	307	Corpulent
+regurgitator2	308	CorpseSpitter
+regurgitator3	309	MawFiend
+doomknight1	310	DoomKnight
+doomknight2	311	AbyssKnight
+doomknight3	312	OblivionKnight
+quillbear1	313	QuillBear
+quillbear2	314	SpikeGiant
+quillbear3	315	ThornBrute
+quillbear4	316	RazorBeast
+quillbear5	317	GiantUrchin
+snake	318	Dummy
+parrot	319	Dummy
+fish	320	Dummy
+evilhole1	321	Dummy
+evilhole2	322	Dummy
+evilhole3	323	Dummy
+evilhole4	324	Dummy
+evilhole5	325	Dummy
+trap-firebolt	326	a trap
+trap-horzmissile	327	a trap
+trap-vertmissile	328	a trap
+trap-poisoncloud	329	a trap
+trap-lightning	330	a trap
+act2guard2	331	Kaelan
+invisospawner	332	Dummy
+diabloclone	333	Diablo
+suckernest1	334	SuckerNest
+suckernest2	335	FeederNest
+suckernest3	336	BloodHookNest
+suckernest4	337	BloodWingNest
+act2hire	338	DesertMerc
+minispider	339	Dummy
+boneprison1	340	skillname88
+boneprison2	341	skillname88
+boneprison3	342	skillname88
+boneprison4	343	skillname88
+bonewall	344	Dummy
+councilmember1	345	Council Member
+councilmember2	346	Council Member
+councilmember3	347	Council Member
+turret1	348	Turret
+turret2	349	Turret
+turret3	350	Turret
+hydra1	351	Hydra
+hydra2	352	Hydra
+hydra3	353	Hydra
+trap-melee	354	a trap
+seventombs	355	Dummy
+dopplezon	356	Dopplezon
+valkyrie	357	Valkyrie
+act2guard3	358	Dummy
+act3hire	359	Iron Wolf
+megademon1	360	Balrog
+megademon2	361	PitLord
+megademon3	362	VenomLord
+necroskeleton	363	skeleton
+necromage	364	skillan80
+griswold	365	Griswold
+compellingorb	366	compellingorb
+tyrael2	367	tyrael
+darkwanderer	368	youngdiablo
+trap-nova	369	a trap
+spiritmummy	370	Dummy
+lightningspire	371	LightningSpire
+firetower	372	FireTower
+slinger1	373	Slinger
+slinger2	374	SpearCat
+slinger3	375	NightSlinger
+slinger4	376	HellSlinger
+act2guard4	377	Dummy
+act2guard5	378	Dummy
+skmage_cold1	379	ReturnedMage
+skmage_cold2	380	BoneMage
+skmage_cold3	381	BaalColdMage
+skmage_cold4	382	HorrorMage
+skmage_fire1	383	ReturnedMage
+skmage_fire2	384	BoneMage
+skmage_fire3	385	BurningDeadMage
+skmage_fire4	386	HorrorMage
+skmage_ltng1	387	ReturnedMage
+skmage_ltng2	388	BoneMage
+skmage_ltng3	389	BurningDeadMage
+skmage_ltng4	390	HorrorMage
+hellbovine	391	Hell Bovine
+window1	392	StrMonsterWindow
+window2	393	StrMonsterWindow
+slinger5	394	SpearCat
+slinger6	395	NightSlinger
+fetishblow1	396	RatMan
+fetishblow2	397	Fetish
+fetishblow3	398	Flayer
+fetishblow4	399	SoulKiller
+fetishblow5	400	StygianDoll
+mephistospirit	401	Dummy
+smith	402	The Smith
+trappedsoul1	403	TrappedSoul
+trappedsoul2	404	TrappedSoul
+jamella	405	Jamella
+izualghost	406	Izual
+fetish11	407	RatMan
+malachai	408	Malachai
+hephasto	409	The Feature Creep
+wakeofdestruction	410	Wake of Destruction
+chargeboltsentry	411	Charged Bolt Sentry
+lightningsentry	412	Lightning Sentry
+bladecreeper	413	Blade Creeper
+invisopet	414	Invis Pet
+infernosentry	415	Inferno Sentry
+deathsentry	416	Death Sentry
+shadowwarrior	417	Shadow Warrior
+shadowmaster	418	Shadow Master
+druidhawk	419	Druid Hawk
+spiritwolf	420	Druid Spirit Wolf
+fenris	421	Druid Fenris
+spiritofbarbs	422	Spirit of Barbs
+heartofwolverine	423	Heart of Wolverine
+oaksage	424	Oak Sage
+plaguepoppy	425	Druid Plague Poppy
+cycleoflife	426	Druid Cycle of Life
+vinecreature	427	Vine Creature
+druidbear	428	Druid Bear
+eagle	429	Eagleexp
+wolf	430	Wolf
+bear	431	Bear
+barricadedoor1	432	Barricade Door
+barricadedoor2	433	Barricade Door
+prisondoor	434	Prison Door
+barricadetower	435	Barricade Tower
+reanimatedhorde1	436	RotWalker
+reanimatedhorde2	437	ReanimatedHorde
+reanimatedhorde3	438	ProwlingDead
+reanimatedhorde4	439	UnholyCorpse
+reanimatedhorde5	440	DefiledWarrior
+siegebeast1	441	Siege Beast
+siegebeast2	442	CrushBiest
+siegebeast3	443	BloodBringer
+siegebeast4	444	GoreBearer
+siegebeast5	445	DeamonSteed
+snowyeti1	446	SnowYeti1
+snowyeti2	447	SnowYeti2
+snowyeti3	448	SnowYeti3
+snowyeti4	449	SnowYeti4
+wolfrider1	450	WolfRider1
+wolfrider2	451	WolfRider2
+wolfrider3	452	WolfRider3
+minion1	453	Minionexp
+minion2	454	Slayerexp
+minion3	455	IceBoar
+minion4	456	FireBoar
+minion5	457	HellSpawn
+minion6	458	IceSpawn
+minion7	459	GreaterHellSpawn
+minion8	460	GreaterIceSpawn
+suicideminion1	461	FanaticMinion
+suicideminion2	462	BerserkSlayer
+suicideminion3	463	ConsumedIceBoar
+suicideminion4	464	ConsumedFireBoar
+suicideminion5	465	FrenziedHellSpawn
+suicideminion6	466	FrenziedIceSpawn
+suicideminion7	467	InsaneHellSpawn
+suicideminion8	468	InsaneIceSpawn
+succubus1	469	Succubusexp
+succubus2	470	VileTemptress
+succubus3	471	StygianHarlot
+succubus4	472	Hell Temptress
+succubus5	473	Blood Temptress
+succubuswitch1	474	Dominus
+succubuswitch2	475	VileWitch
+succubuswitch3	476	StygianFury
+succubuswitch4	477	Blood Witch
+succubuswitch5	478	Hell Witch
+overseer1	479	OverSeer
+overseer2	480	Lasher
+overseer3	481	OverLord
+overseer4	482	BloodBoss
+overseer5	483	HellWhip
+minionspawner1	484	MinionSpawner
+minionspawner2	485	MinionSlayerSpawner
+minionspawner3	486	MinionIce/fireBoarSpawner
+minionspawner4	487	MinionIce/fireBoarSpawner
+minionspawner5	488	Minionice/hellSpawnSpawner
+minionspawner6	489	MinionIce/fireBoarSpawner
+minionspawner7	490	MinionIce/fireBoarSpawner
+minionspawner8	491	Minionice/hellSpawnSpawner
+imp1	492	Imp1
+imp2	493	Imp2
+imp3	494	Imp3
+imp4	495	Imp4
+imp5	496	Imp5
+catapult1	497	CatapultS
+catapult2	498	CatapultE
+catapult3	499	CatapultSiege
+catapult4	500	CatapultW
+frozenhorror1	501	Frozen Horror1
+frozenhorror2	502	Frozen Horror2
+frozenhorror3	503	Frozen Horror3
+frozenhorror4	504	Frozen Horror4
+frozenhorror5	505	Frozen Horror5
+bloodlord1	506	Blood Lord1
+bloodlord2	507	Blood Lord2
+bloodlord3	508	Blood Lord3
+bloodlord4	509	Blood Lord4
+bloodlord5	510	Blood Lord5
+larzuk	511	Larzuk
+drehya	512	Drehya
+malah	513	Malah
+nihlathak	514	Nihlathak Town
+qual-kehk	515	Qual-Kehk
+catapultspotter1	516	Catapult Spotter S
+catapultspotter2	517	Catapult Spotter E
+catapultspotter3	518	Catapult Spotter Siege
+catapultspotter4	519	Catapult Spotter W
+cain6	520	DeckardCain
+tyrael3	521	tyrael
+act5barb1	522	Act 5 Combatant
+act5barb2	523	Act 5 Combatant
+barricadewall1	524	Barricade Wall Right
+barricadewall2	525	Barricade Wall Left
+nihlathakboss	526	Nihlathak
+drehyaiced	527	Drehya
+evilhut	528	Evil hut
+deathmauler1	529	Death Mauler1
+deathmauler2	530	Death Mauler2
+deathmauler3	531	Death Mauler3
+deathmauler4	532	Death Mauler4
+deathmauler5	533	Death Mauler5
+act5pow	534	POW
+act5barb3	535	Act 5 Townguard
+act5barb4	536	Act 5 Townguard
+ancientstatue1	537	Ancient Statue 1
+ancientstatue2	538	Ancient Statue 2
+ancientstatue3	539	Ancient Statue 3
+ancientbarb1	540	Ancient Barbarian 1
+ancientbarb2	541	Ancient Barbarian 2
+ancientbarb3	542	Ancient Barbarian 3
+baalthrone	543	Baal Throne
+baalcrab	544	Baal Crab
+baaltaunt	545	Baal Taunt
+putriddefiler1	546	Putrid Defiler1
+putriddefiler2	547	Putrid Defiler2
+putriddefiler3	548	Putrid Defiler3
+putriddefiler4	549	Putrid Defiler4
+putriddefiler5	550	Putrid Defiler5
+painworm1	551	Pain Worm1
+painworm2	552	Pain Worm2
+painworm3	553	Pain Worm3
+painworm4	554	Pain Worm4
+painworm5	555	Pain Worm5
+bunny	556	Bunny
+baalhighpriest	557	Council Member
+venomlord	558	VenomLord
+baalcrabstairs	559	Baal Crab to Stairs
+act5hire1	560	Barbarian
+act5hire2	561	Barbarian
+baaltentacle1	562	Baal Tentacle
+baaltentacle2	563	Baal Tentacle
+baaltentacle3	564	Baal Tentacle
+baaltentacle4	565	Baal Tentacle
+baaltentacle5	566	Baal Tentacle
+injuredbarb1	567	Injured Barbarian 1
+injuredbarb2	568	Injured Barbarian 2
+injuredbarb3	569	Injured Barbarian 3
+baalclone	570	Baal Crab Clone
+baalminion1	571	Baals Minion
+baalminion2	572	Baals Minion
+baalminion3	573	Baals Minion
+worldstoneeffect	574	Worldstone Effect
+sk_archer6	575	BurningDeadArcher
+sk_archer7	576	BoneArcher
+sk_archer8	577	BurningDeadArcher
+sk_archer9	578	ReturnedArcher
+sk_archer10	579	HorrorArcher
+bighead6	580	Afflicted
+bighead7	581	Tainted
+bighead8	582	Misshapen
+bighead9	583	Disfigured
+bighead10	584	Damned
+goatman6	585	MoonClan
+goatman7	586	NightClan
+goatman8	587	HellClan
+goatman9	588	BloodClan
+goatman10	589	DeathClan
+foulcrow5	590	FoulCrow
+foulcrow6	591	BloodHawk
+foulcrow7	592	BlackRaptor
+foulcrow8	593	CloudStalker
+clawviper6	594	ClawViper
+clawviper7	595	PitViper
+clawviper8	596	Salamander
+clawviper9	597	TombViper
+clawviper10	598	SerpentMagus
+sandraider6	599	Marauder
+sandraider7	600	Infidel
+sandraider8	601	SandRaider
+sandraider9	602	Invader
+sandraider10	603	Assailant
+deathmauler6	604	Death Mauler1
+quillrat6	605	QuillRat
+quillrat7	606	SpikeFiend
+quillrat8	607	RazorSpine
+vulture5	608	CarrionBird
+thornhulk5	609	ThornedHulk
+slinger7	610	Slinger
+slinger8	611	Slinger
+slinger9	612	Slinger
+cr_archer6	613	VileArcher
+cr_archer7	614	DarkArcher
+cr_lancer6	615	VileLancer
+cr_lancer7	616	DarkLancer
+cr_lancer8	617	BlackLancer
+blunderbore5	618	Blunderbore
+blunderbore6	619	Mauler
+skmage_fire5	620	ReturnedMage
+skmage_fire6	621	BurningDeadMage
+skmage_ltng5	622	ReturnedMage
+skmage_ltng6	623	HorrorMage
+skmage_cold5	624	BoneMage
+skmage_pois5	625	HorrorMage
+skmage_pois6	626	HorrorMage
+pantherwoman5	627	Huntress
+pantherwoman6	628	SaberCat
+sandleaper6	629	CaveLeaper
+sandleaper7	630	TombCreeper
+wraith6	631	Ghost
+wraith7	632	Wraith
+wraith8	633	Specter
+succubus6	634	Succubusexp
+succubus7	635	Hell Temptress
+succubuswitch6	636	Dominus
+succubuswitch7	637	Hell Witch
+succubuswitch8	638	VileWitch
+willowisp5	639	Gloam
+willowisp6	640	BlackSoul
+willowisp7	641	BurningSoul
+fallen6	642	Carver
+fallen7	643	Devilkin
+fallen8	644	DarkOne
+fallenshaman6	645	CarverShaman
+fallenshaman7	646	DevilkinShaman
+fallenshaman8	647	DarkShaman
+skeleton6	648	BoneWarrior
+skeleton7	649	Returned
+batdemon6	650	Gloombat
+batdemon7	651	Fiend
+bloodlord6	652	Blood Lord1
+bloodlord7	653	Blood Lord4
+scarab6	654	Scarab
+scarab7	655	SteelWeevil
+fetish6	656	Flayer
+fetish7	657	StygianDoll
+fetish8	658	SoulKiller
+fetishblow6	659	Flayer
+fetishblow7	660	StygianDoll
+fetishblow8	661	SoulKiller
+fetishshaman6	662	FlayerShaman
+fetishshaman7	663	StygianDollShaman
+fetishshaman8	664	SoulKillerShaman
+baboon7	665	TempleGuard
+baboon8	666	TempleGuard
+unraveler6	667	Guardian
+unraveler7	668	Unraveler
+unraveler8	669	Horadrim Ancient
+unraveler9	670	Horadrim Ancient
+zealot4	671	Zealot
+zealot5	672	Zealot
+cantor5	673	Heirophant
+cantor6	674	Heirophant
+vilemother4	675	Grotesque
+vilemother5	676	FleshSpawner
+vilechild4	677	GrotesqueWyrm
+vilechild5	678	FleshBeast
+sandmaggot6	679	WorldKiller
+maggotbaby6	680	WorldKillerYoung
+maggotegg6	681	WorldKillerEgg
+minion9	682	Slayerexp
+minion10	683	HellSpawn
+minion11	684	GreaterHellSpawn
+arach6	685	Arach
+megademon4	686	Balrog
+megademon5	687	PitLord
+imp6	688	Imp1
+imp7	689	Imp4
+bonefetish6	690	Undead StygianDoll
+bonefetish7	691	Undead SoulKiller
+fingermage4	692	Strangler
+fingermage5	693	StormCaster
+regurgitator4	694	MawFiend
+vampire6	695	BloodLord
+vampire7	696	GhoulLord
+vampire8	697	DarkLord
+reanimatedhorde6	698	UnholyCorpse
+dkfig1	699	DoomKnight
+dkfig2	700	DoomKnight
+dkmag1	701	OblivionKnight
+dkmag2	702	OblivionKnight
+mummy6	703	Cadaver
+ubermephisto	704	Mephisto
+uberdiablo	705	Diablo
+uberizual	706	izual
+uberandariel	707	Lilith
+uberduriel	708	Duriel
+uberbaal	709	Baal Crab
+demonspawner	710	Evil hut
+demonhole	711	Dummy
+megademon6	712	PitLord
+dkmag3	713	OblivionKnight
+imp8	714	Imp4
+swarm5	715	HellSwarm
+sandmaggot7	716	WorldKiller
+arach7	717	Arach
+scarab8	718	SteelWeevil
+succubus8	719	Hell Temptress
+succubuswitch9	720	VileWitch
+corruptrogue6	721	FleshHunter
+cr_archer8	722	DarkArcher
+cr_lancer9	723	BlackLancer
+overseer6	724	HellWhip
+skeleton8	725	Returned
+sk_archer11	726	HorrorArcher
+skmage_fire7	727	BurningDeadMage
+skmage_ltng7	728	HorrorMage
+skmage_cold6	729	BoneMage
+skmage_pois7	730	HorrorMage
+vampire9	731	DarkLord
+wraith9	732	Specter
+willowisp8	733	BurningSoul
+horse	734	dummy
+cowking	735	Hell Bovine
+darkelder	736	PlagueBearer
+pig	737	dummy
+seagull	738	dummy
+suicideminion9	739	BerserkSlayer
+suicideminion10	740	FrenziedHellSpawn
+suicideminion11	741	InsaneHellSpawn
+wargoatman	742	WarGoatman
+warbighead	743	Tainted
+warputriddefiler	744	WarDefiler
+colossal1	745	Ancient Barbarian 1
+colossal2	746	Ancient Barbarian 2
+colossal3	747	Ancient Barbarian 3
+colbarbwhirl	748	DefenderSpirit
+colbarbthrow	749	GuardianSpirit
+colbarbfrenzy	750	ProtectorSpirit
